@@ -1,0 +1,43 @@
+{
+  "_comment": "初版默认参考阈值（接入内网真实数据后按实测基线校准，对应 SKILL.md 待适配清单 ③；正常使用豁免启发式口径另见 references/general_guide.md）",
+  "slicing": {
+    "_note": "切片过滤：充电标识、拔充后跳过电压回落秒数、灭屏最短30分钟(1800s)/亮屏最短10分钟(600s)",
+    "charge_active_value": 1,
+    "post_unplug_settling_sec": 300,
+    "screen_off_min_duration_sec": 1800,
+    "screen_on_min_duration_sec": 600
+  },
+  "screen_off": {
+    "_note": "灭屏异常判定红线：真实均流(mA)、掉电率(%/h)、AP最低深睡率(%)",
+    "abnormal_i_real_ma": 20.0,
+    "abnormal_drop_rate_pct_per_h": 0.3,
+    "min_deep_sleep_pct": 80.0
+  },
+  "screen_on": {
+    "_note": "亮屏异常触发线：掉电率、均流、后台占比红线、豁免允许后台上限及多窗并发展开时长倍数阈值(仅作并发辅助参考，优先看时间区间重叠/窗口状态)",
+    "abnormal_drop_rate_pct_per_h": 12.0,
+    "abnormal_i_real_ma": 1000.0,
+    "abnormal_bg_share_pct": 25.0,
+    "exemption_max_bg_share_pct": 15.0,
+    "multiwin_total_fg_ratio": 1.2
+  },
+  "simulation": {
+    "_note": "软件模拟覆盖率低时的筛查门槛（初版参考）：低于此值先核对是否缺器件表/单位漏换算/采集不全，排除后再排查软件盲区、外设或硬件漏电",
+    "blind_spot_coverage_pct": 35.0
+  },
+  "dual_list_merge": {
+    "_note": "统一4列表双榜合并门槛：大户(%)、线程(%)、频次(次/h)、最少保底前5条、突增Top3",
+    "min_share_pct": 3.0,
+    "min_thread_cpu_pct": 2.0,
+    "min_freq_per_hour": 3.0,
+    "guaranteed_top_n": 5,
+    "diff_surge_top_k": 3
+  },
+  "log_tools": {
+    "_note": "日志排查参数：模板暴增倍率(5倍)、差分Top条数、前后上下文行数",
+    "diff_surge_multiplier": 5.0,
+    "diff_top_k": 15,
+    "context_before_lines": 35,
+    "context_after_lines": 35
+  }
+}
