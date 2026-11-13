@@ -1,216 +1,174 @@
-# 阶段三 & 阶段四架构升级指南：日志调查子代理 + SQLite 关键字/行为对比记忆库
+# 阶段二~四实战升级方案：轻量日志漏斗 + 子代理探索 + SQLite 双层知识库
 
-> **文档定位**：本文档用于替换原方案中“主模型死板调用 4 个固定脚本查日志 + 仅向 Markdown 追加静态卡片”的旧设计，升级为 **“子代理自主查日志（种子关键字引导 + 时间围栏内自由探索） + SQLite 结构化记忆库（首次记录 $\rightarrow$ 下次对比确认/更正 + 自动导出可读快照）”** 闭环架构。  
-> 全文保持**通用性与指导性**，不绑定任何内部真实表名、包名或私有日志格式；文末附有可直接发给内网 AI 自动完成改造的指令模板。
+> **文档定位**：承接你内网**已实现的阶段一（`.db` 切片与 4 列对比表）**，专门解决后续查日志与知识沉淀环节的三大实战痛点：
+> 1. **防盲搜与防硬编**：几百 MB 原始日志不再让子代理大海捞针，先过一层**“时间覆盖止损 + 异常窗切片 + Top 10 暴增 Tag”薄漏斗**（日志被冲掉立刻停手不瞎编，日志还在则缩小成几 MB 小文件交给子代理自由推理）；
+> 2. **防同模块案例互相覆盖 & 防错题本自污染**：SQLite 拆为 **“客观查证地图（`1对1` 自动对比更正）” + “具体故障死法库（`1对多` 候选隔离，人工确认转正）”** 两张表；
+> 3. **防死板匹配查不出**：采用 **“词根分词模糊匹配 + 全库轻量目录兜底”**，解决 `.db` 名字与日志名字对不上的失忆问题。
 
 ---
 
-## 一、 核心升级背景与整体流转图
-
-### 1. 为什么要改？
-- **解绑死脚本，释放大模型原生日志推理能力**：固定脚本只能处理预设好的刷屏格式；改成**独立子代理（Subagent）**后，既能先按已知关键字秒级定位，又能在未命中时利用原生搜索与上下文阅读能力顺着 `PID / Tag / IPC 上下游 / 状态机切换` 自由探索，还不污染主对话上下文窗口。
-- **从“只增不改的文本堆砌”升级为“可对比、可纠偏、可回滚的结构化记忆”**：利用 Python 标准库自带的 `sqlite3`（零第三方依赖）建立轻量记忆库 `power_memory.db`——第 1 次遇到某模块时记录初版关键字与日志行为（`provisional`），下一次再遇到时与实测日志**对比验证**，一致则升级坐实（`verified`），发现旧关键字失效或行为理解有偏差则**原地更正（`CORRECT`）并留存修改前快照**。
-
-### 2. 存储边界划分（什么进 SQLite，什么留 Markdown？）
-
-| 知识资产类别 | 存储载体 | 原因与维护方式 |
-| :--- | :--- | :--- |
-| **模块级查日志经验**：包名/锁名/IRQ $\leftrightarrow$ 真实日志 `Tag` 映射、有效定位关键字、无害噪音/失效避坑词、正常与异常日志行为特征、归属团队、历次修改记录 | **SQLite 库**<br>`assets/memory/power_memory.db` | 条目随跑单持续增长；按嫌犯名毫秒级精准召回 2~5 条喂给子代理，省 Token、防重复、支持状态流转与回滚。 |
-| **记忆库人工可读视图**：全量模块关键字与行为总览表 | **自动生成的只读 Markdown**<br>`references/log_memory_snapshot.md` | 每次写库后由脚本自动覆盖导出，消除二进制黑盒，方便人眼审阅与 `git diff` 检查。 |
-| **全局宪法级审单规则**：真/模电量分层、豁免白名单、亮/灭屏看表法则、5 类通用死法、结案三问自检 | **人工/复盘维护的 Markdown**<br>`general_guide.md`、`screen_off_rules.md`、`screen_on_rules.md` | 条目精炼且每单必读，留在 `.md` 中便于随时直接打开增删几句话。 |
-
-*(注：原有的 `case_knowledge_base.md` 可仅保留少量经典示范卡片供跨模块“照猫画虎”教学，具体模块词条统一收归 `power_memory.db` 管理。)*
-
-### 3. 四步闭环运行流转
+## 一、 整体衔接链路（阶段一不动，后三步彻底跑实）
 
 ```text
-[.db 锁定异常时间窗 + 嫌犯名单]
+【阶段一：你已实现，保持不动】
+  输入 .db  ──▶ 输出：异常时间段 [T_start, T_end]、参照段 [Ref_start, Ref_end]、4 列对比表头号嫌犯
         │
         ▼
-① 派单前精准召回（脚本读 power_memory.db）
-   ├─ 精确匹配：按包名 / 锁名 / IRQ / 别名查出历史记录（含有效词、避坑词、已知行为、状态）
-   └─ 同类示范：若为全新模块，按异常槽位类别（slot_category）召回 1~2 条已验证（verified）同类记录作参考
+【阶段二：SQLite 双层召回（memory_store.py recall）】
+  ├─ 词根模糊匹配：拆解嫌犯名词根，查出表 1《模块客观查证地图》+ 表 2《该模块历史故障案例列表》
+  └─ 轻量目录兜底：附带全库已存模块一句话目录（防名称缩写不一致漏召回，主模型可点名补调）
         │
         ▼
-② 子代理自主调查（独立上下文窗口，只读不写库）
-   ├─ 第一步【对比核验】：跳过避坑噪音词，先用历史有效关键字查异常窗，与旧记录中的行为描述逐项对比
-   ├─ 第二步【自由探索】：未命中或旧记录失准时，在 [T_start - 10min, T_end] 围栏内自由检索 Tag/PID/IPC/报错上下文
-   ├─ 第三步【Ref 反证】：所有抓到的疑似异常日志，必须在同库正常低耗 Ref 段核验频次，剔除常驻背景打印
-   └─ 第四步【结构化回传】：返回「根因结论 + 2~4 行原日志铁证」+「记忆库变更提案 JSON（CREATE / CONFIRM / CORRECT）」
+【阶段三：薄漏斗预检 + 子代理自由破案】
+  ├─ 第一步：跑轻量漏斗脚本（log_funnel.py）
+  │    ├─ 若日志最早时间 > T_end（已被环形缓冲区冲掉）──▶ 立即止损！不启子代理，直接按 .db 物理指标给疑似结论
+  │    └─ 若日志覆盖该时段 ──▶ 切出 [T_start - 10min, T_end] 小文件 + 算出比 Ref 暴增的 Top 10 Tag/PID 榜单
+  │
+  └─ 第二步：派发独立【日志调查子代理】（在小切片文件内作业，不撑爆主窗口）
+       ├─ ① 按表 1《查证地图》跳过已知噪音词，搜真实 Tag 与追上游跳板词，核对是否命中表 2 老案例
+       ├─ ② 未命中老案例时，顺着 Top 10 暴增 Tag/PID 用 Grep/Read 自由展开上下文推理根因
+       └─ ③ 去 Ref 正常段核验同关键字频次（排除常驻背景打印），只读回传「实锤日志结论 + 分层写库提案」
         │
         ▼
-③ 主模型“结案三问自检”把关
-   └─ 核查：时间贯穿性、物理硬件可解释性、Ref 正常段反证；通过后放行写库提案（无日志或未查清时禁止覆写旧记录）
-        │
-        ▼
-④ 统一写库留痕 + 导出快照（主线程单次调用写库脚本）
-   ├─ 更新 module_log_memory 主表（首次记 provisional，二次吻合升 verified，有偏差原地更正）
-   ├─ 写入 memory_revision_log 留痕表（保存修改前 JSON 快照与对比差异原因，随时可回滚）
-   └─ 自动刷新 references/log_memory_snapshot.md 可读总览表
+【阶段四：分层安全写回 SQLite（memory_store.py）】
+  ├─ 表 1《模块查证地图》（客观 Tag / 跳板词 / 实锤背景噪音词）──▶ 主模型三问自检通过后【自动写入或对比更正】（带快照可回滚）
+  ├─ 表 2《模块故障死法》（新发现的具体 Bug 因果）──▶ 一律存为【candidate 待确认候选】（绝不覆盖同模块旧案例，人工确认后转 confirmed）
+  └─ 自动刷新 references/log_memory_snapshot.md 可读总览表（方便肉眼检查与 git diff）
 ```
 
 ---
 
-## 二、 SQLite 记忆库表结构设计（`power_memory.db`）
+## 二、 SQLite 双层知识库设计（`power_memory.db`）
 
-数据库文件建议存放在 `.claude/skills/power-review/assets/memory/power_memory.db`（纳入版本管理或内网持久化目录）。仅需 **2 张核心表**，结构通用清晰：
+数据库存放路径建议：`.claude/skills/power-review/assets/memory/power_memory.db`（仅用 Python 自带 `sqlite3`，零外部依赖）。
 
-### 1. 主表：`module_log_memory`（模块关键字与日志行为字典）
+### 为什么必须拆成两张业务表？
+同一个系统模块（例如音频服务、系统代理锁、网络管理、某常驻核心进程）在实战中往往有 **3~5 种完全不同的耗电死法**。
+- **模块叫什么 Tag、怎么顺藤摸瓜找上游 App、哪句打印是平时也有的正常噪音** $\rightarrow$ 这是**模块固有属性（1 对 1）**，如果以前记错了或版本改名了，应该直接**原地更正**；
+- **这次是因为什么 Bug 导致耗电** $\rightarrow$ 这是**故障案例（1 对多）**，新死法必须**并列追加**，且未经人工/结案确认前只能标为 `candidate`（防止大模型两次猜错自己洗白成真理）。
+
+### 表 1：`module_lookup_map`（模块客观查证地图 —— `1 对 1`，支持自动对比更正）
 
 ```sql
-CREATE TABLE IF NOT EXISTS module_log_memory (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    entity_key          TEXT NOT NULL UNIQUE, -- 核心唯一标识（如包名 com.xxx.sync、锁名 SyncWake、中断名 hall_irq）
-    entity_type         TEXT NOT NULL,        -- 对象类型：app | wakelock | irq | thread | subsystem | peripheral
-    slot_category       TEXT NOT NULL,        -- 异常维度分类（如 off_wakelock / off_irq / off_blindspot / on_high_refresh / on_bg_run）
-    aliases_and_tags    TEXT DEFAULT '[]',    -- JSON 数组：关联进程名、真实日志 Tag、服务名（打通 .db 名字与日志 Tag 差异）
-    effective_keywords  TEXT DEFAULT '[]',    -- JSON 数组：实测精准有效的检索关键字或正则片段（按推荐优先级排列）
-    noise_keywords      TEXT DEFAULT '[]',    -- JSON 数组：已证实搜不到、或正常 Ref 段也高频刷屏的误导词/无害噪音词（下次直接避开）
-    normal_behavior     TEXT DEFAULT '',      -- 正常态日志行为总结（如：正常起止成对打印特征、单次耗时范围、正常心跳频率）
-    abnormal_behavior   TEXT DEFAULT '',      -- 异常高耗态日志行为总结（如：卡在何处不释放、何种报错死循环、状态乒乓特征及上下游依赖）
-    owner_team_hint     TEXT DEFAULT '',      -- 建议转交研发模块/团队方向（通用占位，按内部实际组织填写）
-    status              TEXT DEFAULT 'provisional', -- 置信状态：provisional（仅记录一次待验证）| verified（经对比验证坐实）
-    hit_count           INTEGER DEFAULT 1,    -- 累计实战命中/核验次数
-    last_ticket_id      TEXT DEFAULT '',      -- 最近一次更新来源单号或样本标识
-    updated_at          TEXT NOT NULL         -- 最后更新时间（ISO-8601）
+CREATE TABLE IF NOT EXISTS module_lookup_map (
+    entity_key           TEXT PRIMARY KEY,     -- 核心标识（如 com.xxx.audio / ProxyRunningLock / hall_irq）
+    entity_type          TEXT NOT NULL,        -- 类型：app | wakelock | irq | thread | subsystem | peripheral
+    aliases_and_tags     TEXT DEFAULT '[]',    -- JSON 数组：日志真实 Tag、进程名、常见简称（解决 .db 名与日志名不一致）
+    log_source_hint      TEXT DEFAULT 'hilog', -- 该去哪类日志查：hilog | kernel | hiview_event | 专有日志说明
+    trace_keywords       TEXT DEFAULT '[]',    -- JSON 数组：追责跳板词 & 生命周期起止词（如怎么揪出代理锁背后的真实调用者 UID/PID）
+    noise_keywords       TEXT DEFAULT '[]',    -- JSON 数组：经 Ref 正常段比对证实的无害常驻刷屏词（下次直接跳过不看）
+    normal_baseline_note TEXT DEFAULT '',      -- 正常态下的日志规律一句话备忘
+    updated_at           TEXT NOT NULL         -- 最后更新时间
 );
-
-CREATE INDEX IF NOT EXISTS idx_memory_slot_status
-    ON module_log_memory (slot_category, status);
 ```
 
-### 2. 留痕表：`memory_revision_log`（对比修改审计与回滚表）
+### 表 2：`module_fault_cases`（模块故障死法库 —— `1 对多`，候选隔离 + 人工转正）
+
+```sql
+CREATE TABLE IF NOT EXISTS module_fault_cases (
+    case_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_key           TEXT NOT NULL,        -- 归属模块标识（关联 module_lookup_map.entity_key，一对多）
+    slot_category        TEXT NOT NULL,        -- 异常维度（如 off_wakelock / off_irq / off_blindspot / on_high_refresh / on_bg_run）
+    case_title           TEXT NOT NULL,        -- 故障一句话标题（如：某通路切换失败每 2 秒重试导致持锁不释放）
+    symptom_in_db        TEXT DEFAULT '',      -- .db 典型数据表象
+    trigger_log_pattern  TEXT NOT NULL,        -- 确诊日志特征（搜到什么报错/状态横跳/有借无还组合即可坐实）
+    root_cause_detail    TEXT NOT NULL,        -- 根因逻辑解释与上下游链路
+    owner_team           TEXT DEFAULT '',      -- 建议转交研发团队
+    status               TEXT DEFAULT 'candidate', -- 状态：candidate（AI 新发现待确认）| confirmed（人工/研发结案已确认）
+    hit_count            INTEGER DEFAULT 1,    -- 累计命中次数
+    sample_log           TEXT DEFAULT '',      -- 1~3 行典型脱敏原始日志样本
+    last_ticket_id       TEXT DEFAULT '',      -- 来源单号
+    updated_at           TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cases_entity ON module_fault_cases (entity_key, status);
+CREATE INDEX IF NOT EXISTS idx_cases_slot   ON module_fault_cases (slot_category, status);
+```
+
+### 表 3：`memory_revision_log`（查证地图修改留痕与回滚表）
 
 ```sql
 CREATE TABLE IF NOT EXISTS memory_revision_log (
-    rev_id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    entity_key      TEXT NOT NULL,        -- 关联主表的模块标识
-    action          TEXT NOT NULL,        -- 动作类型：CREATE（首次记录）| CONFIRM（对比吻合）| CORRECT（对比发现偏差并更正）| MANUAL（人工修订）
-    diff_reason     TEXT NOT NULL,        -- 对比结论与修改原因（写明上次记了什么、本次实测看到了什么、为何更正）
-    old_snapshot    TEXT DEFAULT NULL,    -- 修改前主表整行数据的 JSON 备份（CREATE 时为 NULL；改错时可一键还原）
-    new_snapshot    TEXT NOT NULL,        -- 修改后主表整行数据的 JSON 快照
-    log_sample      TEXT DEFAULT '',      -- 支撑本次记录/更正的 1~3 行关键原始日志样本（脱敏保留 Tag 与动作）
-    ticket_id       TEXT DEFAULT '',      -- 触发本次变更的单号
-    created_at      TEXT NOT NULL         -- 变更时间
+    rev_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_key    TEXT NOT NULL,
+    action        TEXT NOT NULL,        -- CREATE_MAP | UPDATE_MAP | ROLLBACK_MAP
+    diff_reason   TEXT NOT NULL,        -- 修改原因（如：实测日志 Tag 已由 OldTag 变更为 NewTag）
+    old_snapshot  TEXT DEFAULT NULL,    -- 修改前 module_lookup_map 行 JSON 备份
+    new_snapshot  TEXT NOT NULL,        -- 修改后 JSON 快照
+    ticket_id     TEXT DEFAULT '',
+    created_at    TEXT NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_rev_entity
-    ON memory_revision_log (entity_key, rev_id DESC);
 ```
 
 ---
 
-## 三、 阶段三：日志调查子代理（Subagent）协同规范
+## 三、 阶段三：1 个薄漏斗预检脚本 + 子代理自主破案规范
 
-### 1. 主模型派发给子代理的《日志调查任务单》输入契约
-当存在设备日志时，主模型针对每个待审异常簇（或 `Primary Target` 切片）启动一个独立的只读调查子代理，传入以下 **5 项结构化上下文**（严禁把整份 `.db` 原始大表塞给子代理，保持子代理上下文干净）：
+### 1. 薄漏斗脚本（`scripts/stage3_log/log_funnel.py`）只干哪 3 件事？
+不再写限制大模型的复杂查询脚本，只保留这一个预处理漏斗（回内网只需对齐真实日志行开头的时间戳正则即可）：
 
-1. **【时间围栏（强制边界）】**：
-   - **异常调查窗口**：`[T_start - 10分钟, T_end]`（往前多扩 10 分钟，专门捕捉“灭屏前或切后台前申请了锁/开启了任务但一直未释放”的起点日志）；
-   - **正常对照窗口（`Ref`）**：`[Ref_start, Ref_end]`（若全库无正常参照段则标 `Ref = 无`）。
-2. **【待解释的 `.db` 物理铁证与头号嫌犯】**：
-   - 电池真实均流 $I_{\text{real}}$ 与异常类型（灭屏不深睡 / 灭屏静默外设漏电 / 亮屏高刷常驻 / 亮屏后台陪跑等）；
-   - 纯物理指标排名靠前或跨表共振的嫌犯名称列表（包名、锁名、线程名、`Wakeup IRQ` 名）。
-3. **【日志目录路径与可选大文件辅助工具】**：
-   - 设备日志所在路径；若日志为数百 MB 压缩包或跨多天巨型文件，提示子代理可先按时间窗切片提取，再做精细检索。
-4. **【从 `power_memory.db` 召回的历史记忆】**：
-   - **精确命中记录**：该嫌犯上次记录的 `status (provisional/verified)`、`aliases_and_tags`、`effective_keywords`、`noise_keywords`、`normal_behavior`、`abnormal_behavior`；
-   - **同类示范记录**（当嫌犯首次出现时）：同属一个 `slot_category` 的 1~2 条历史已验证记录，供子代理参考排查手法。
-5. **【子代理执行纪律与返回格式要求】**（见下节）。
+1. **先验日志覆盖率（1 秒止损）**：
+   - 读取日志目录各文件首尾有效时间戳 `[Log_min, Log_max]`，与异常段 `[T_start, T_end]` 求交集时长占比；
+   - **若交集时长 `< 5%`（掉电时段日志已被冲掉）**：直接输出 `"covered": false`，**主模型不启动子代理**，直接在报告写明*“异常掉电时段日志已被环形缓冲区覆盖，以下基于 `.db` 纯物理真值给出疑似归因”*。
+2. **切出异常小窗口文本**：
+   - 将落在 `[T_start - 10分钟, T_end]` 内的日志行按时间顺序写入单个临时文件（如 `tmp_target_slice.log`，往前多扩 10 分钟专门抓灭屏前申请未释放的锁起点）。
+3. **输出 Top 10 异常活跃/暴增 `Tag (PID)` 靶子榜**：
+   - 顺手统计异常小窗口内各 `Tag` 的打印行数；若同库存在正常 `Ref` 段且日志也覆盖 `Ref` 段，则折算每小时打印速率，输出**相比 `Ref` 段净增/倍数最高的前 10 个 `Tag (PID)` 及其最高频的 1 条脱敏代表行**。
 
 ---
 
-### 2. 子代理内部查日志四步法（种子引导 + 自由探索 + 对比纠偏）
+### 2. 日志调查子代理（Subagent）输入与三步探索法
 
-子代理在自身独立上下文中按以下顺序自主开展调查：
+当漏斗返回 `"covered": true` 时，主模型启动独立的日志调查子代理，传入：
+- 切好的异常窗口日志路径 `tmp_target_slice.log`（及原始日志目录，供查 `Ref` 段对照）；
+- `.db` 异常段摘要（真实均流、物理铁证、头号嫌犯名）与 `Ref` 正常时间段；
+- 漏斗算出的 **Top 10 异常活跃/暴增 `Tag` 榜单**；
+- 从 `power_memory.db` 召回的 **《模块查证地图》+《历史故障案例（区分 `confirmed` 与 `candidate`）》**。
 
-- **第 1 步：核对历史记忆（有记录先验证，避开已知坑）**
-  - 若任务单带有历史记录：**直接跳过 `noise_keywords` 中的已知噪音词**，优先用 `effective_keywords` 和 `aliases_and_tags` 在异常时间窗内检索（`Grep`）；
-  - 将实际看到的日志上下文与历史记录中的 `normal_behavior / abnormal_behavior` 对比，判断属于“完全吻合”、“正常无辜行为”还是“旧关键字失效 / 实际行为与旧记录不符”。
-- **第 2 步：时间围栏内自由探索（旧关键字未命中或新模块时全面放开）**
-  - 不受任何固定脚本限制，自主组合运用正则搜索（`Grep`）与前后上下文阅读（`Read`）：
-    1. **找真名与 PID**：用包名片段、服务名或功能词搜进程启动/绑定行或常规打印行，锁定真实 `PID` 与模块专属日志 `Tag`；
-    2. **追生命周期与 5 类死法**：围绕异常时间窗排查 **① 有借无还**（有 `Acquire/Start/Open/Vote` 无对应释放）、**② 报错死循环重试**（高频 `fail/retry/timeout`）、**③ 状态机乒乓震荡**（如 `99% <-> 100%`、`Connect <-> Disconnect`）、**④ 跨进程 IPC/Binder 阻塞**（A 持代理锁等下游 B 服务响应，顺着日志继续去搜 B 模块）、**⑤ 灭屏/冻结拦截失效**；
-    3. **无明确嫌犯时的全局扫描**：若属软件模拟覆盖率极低/物理静默的外设盲区漏电，直接在异常窗内检索内核唤醒源、外设充电/霍尔/连接状态切换及高频 `W/E` 级日志。
-- **第 3 步：`Ref` 正常参照段反证（子代理内部必做自检！）**
-  - 一旦锁定某条疑似异常关键字或刷屏日志，**只要存在正常低耗 `Ref` 段，子代理必须用同一关键字去 `[Ref_start, Ref_end]` 统计出现频次**：
-    - 若 `Ref` 段同样同频刷屏 $\rightarrow$ 判定为常驻背景噪音，子代理自行推翻该假设继续探索，并把该词记入本次拟提交的 `noise_keywords`！
-    - 若异常段高频出现（或长持锁不释放）而 `Ref` 段为 `0`（或极少且成对秒放） $\rightarrow$ 锁定为实锤证据。
-- **第 4 步：向主模型返回结构化调查结果（严禁子代理直接写库）**
-  - 无论某个被调查模块最终是**“确诊真凶”**还是**“排除嫌疑的无辜模块”**，只要摸清了它的日志 Tag、关键字或正常/异常行为，都可以生成记忆提案一并返回：
+**子代理内部按以下 3 步自主运行（只读不写库）：**
 
-```json
-{
-  "investigation_result": {
-    "verdict": "CONFIRMED_ROOT_CAUSE | SUSPECT_INCONCLUSIVE | RULED_OUT_NORMAL",
-    "culprit_entity": "模块/包名/锁名",
-    "failure_archetype": "有借无还 | 报错死循环 | 状态乒乓 | 跨进程阻塞 | 状态拦截失效 | 正常行为",
-    "root_cause_summary": "大白话讲清来龙去脉（含上下游链路）",
-    "target_ vs_ref_count": "异常段出现 N 次（持续 X 分钟） vs Ref 正常段出现 0 次",
-    "key_log_evidence": [
-      "保留原始时间戳、PID、Tag 的 2~4 行最核心日志原文"
-    ],
-    "owner_team_suggestion": "建议转交的研发方向"
-  },
-  "memory_proposals": [
-    {
-      "action": "CREATE | CONFIRM | CORRECT",
-      "entity_key": "com.xxx.example",
-      "entity_type": "app | wakelock | irq | subsystem | peripheral",
-      "slot_category": "off_wakelock",
-      "aliases_and_tags": ["ExampleSvc", "ExampleSyncTag"],
-      "effective_keywords": ["AcquireLock.*Example", "SyncTask timeout"],
-      "noise_keywords": ["Example Heartbeat ok"],
-      "normal_behavior": "正常同步时 Acquire -> Sync finish -> Release 在 3 秒内成对出现",
-      "abnormal_behavior": "网络异常或远端无响应时卡在 SyncTask timeout 每 5 秒重试，期间一直不走 Release",
-      "owner_team_hint": "云同步模块团队",
-      "diff_reason": "首次记录该模块 Tag 与持锁重试特征（若为 CORRECT 则写明：原记录关键字为 XXX，本次对比实测日志发现实际打印为 YYY，故更正）",
-      "log_sample": "02:15:03.112  1842  1901 E ExampleSyncTag: SyncTask timeout, retry..."
-    }
-  ]
-}
-```
+1. **第一步：对照《查证地图》定向核查（有经验先用经验）**
+   - 自动避开 `noise_keywords` 中的已知无害刷屏词；
+   - 若嫌犯是系统代理服务/公共锁，先搜 `trace_keywords` 揪出真正发起请求的业务进程 `UID/PID`；
+   - 对照该模块名下的 `module_fault_cases`：若命中 `confirmed` 案例特征词则直接锁定；若命中 `candidate` 候选案例，仍需严格核验上下文是否真能解释本次耗电。
+2. **第二步：在小切片文件内自由探索（老案例未命中时全面放开）**
+   - 直接在 `tmp_target_slice.log` 这个干净的小范围内使用 `Grep` 和 `Read` 自由探索：
+     - 重点排查 **Top 10 暴增 `Tag/PID`** 为什么在该时段狂刷；
+     - 在切片开头（含灭屏前 10 分钟）搜嫌犯的申请/开启打印，顺着 `PID` 往下看是不是因为中途报错、超时或条件分支漏了没走释放；
+     - 遇到跨进程 `IPC/Binder` 等待下游服务时，直接顺着日志里的目标服务名在同一切片里继续搜下游服务日志。
+3. **第三步：`Ref` 正常段反证 + 结构化回传**
+   - 凡是新抓到的疑似异常日志，若 `Ref` 段有日志覆盖，**必须去 `Ref` 段检索一次频次**——确认正常段没有同频狂打后才可定案（若正常段也在狂打，则推翻重查，并顺手将该词放入拟更新的 `noise_keywords`！）；
+   - 向主模型返回调查结论与两条独立的记忆提案：
+     - `map_update`（可选）：本次新摸清或需更正的真实日志 `Tag`、追责跳板词、实锤背景噪音词；
+     - `case_proposal`（可选）：若匹配已有案例则返回 `{"action": "HIT_EXISTING", "case_id": ...}`；若发现了新死法则返回 `{"action": "ADD_CANDIDATE", ...}`。
 
 ---
 
-## 四、 阶段四：防污染护栏与“记录 $\rightarrow$ 下次对比修改”写库规则
+## 四、 零依赖双层知识库管理脚本（`scripts/stage4_evolve/memory_store.py`）
 
-为了防止大模型某次没查清就把好不容易攒对的知识库改坏，主模型在更新 `power_memory.db` 前必须执行 **4 条硬护栏**：
-
-1. **子代理只读、主线程单点写库（防锁库与并发冲突）**：
-   - 多个异常簇可并行启动多个子代理查日志，但所有子代理只读不写；主模型汇总结果并通过**结案三问自检**后，统一调用一次写库脚本落盘。
-2. **缺日志单严禁改库**：
-   - 当用户仅传入 `.db` 未提供日志，或日志时间段缺失导致归因状态为 `疑似对象（尚缺日志验证）` 时，**禁止触发任何 `CREATE / CONFIRM / CORRECT` 写库操作**。
-3. **状态分级保护（`provisional` vs `verified`）**：
-   - **首次遇到（`CREATE`）**：状态一律标为 `provisional`（待二次验证），`hit_count = 1`。下次子代理召回看到 `provisional` 时，会知道“这只是上次记过一次的初稿，需重点核对真伪”；
-   - **二次遇到且实测吻合（`CONFIRM`）**：`hit_count` 加 1，状态自动晋升为 `verified`（已坐实），并合并新发现的补充别名或噪音词；
-   - **二次遇到发现偏差（`CORRECT`）**：
-     - 若原记录为 `provisional`：有明确日志样本即可直接更正字段，并在 `memory_revision_log` 记录差异原因；
-     - 若原记录已是多次验证的 `verified`：只有本次通过了主模型“三问自检”拿到实锤日志（或在报告末尾经人工确认）时才允许覆盖更正，同时自动将修改前整行 JSON 备份进 `old_snapshot`，确保随时可一键回滚。
-4. **“无辜模块”的客观经验照样沉淀**：
-   - 某模块在 `.db` 里模拟电量虚高被列为嫌疑人，子代理查完日志证实它只是正常心跳或短时合法任务（`RULED_OUT_NORMAL`）——此时将其真实的 `Tag`、`normal_behavior` 和无害刷屏词 `noise_keywords` 记入库中，**下次再遇到它虚高时，子代理 10 秒就能核对排除，大幅提速！**
-
----
-
-## 五、 零依赖记忆库管理脚本参考蓝图（`scripts/stage4_evolve/memory_store.py`）
-
-以下脚本仅使用 Python 标准库（`sqlite3`、`json`、`argparse`、`pathlib`、`datetime`），不依赖任何外部包或私有数据格式，可直接作为 `scripts/stage4_evolve/memory_store.py` 落地使用：
+以下完整脚本可直接落盘使用，已内置**词根分词模糊召回**、**全库轻量目录输出**、**表 1 自动对比更正 + 快照回滚**、**表 2 候选隔离与一键转正/剔除**，以及 **Markdown 总览快照自动导出**：
 
 ```python
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-功耗审单日志关键字与行为记忆库管理工具（零第三方依赖）
+功耗审单 SQLite 双层知识库管理工具（零第三方依赖）
+表 1: module_lookup_map  —— 模块客观查证地图（1对1，支持自动记录与对比更正 + 回滚）
+表 2: module_fault_cases —— 模块具体故障死法（1对多，AI 新增默认存 candidate，人工确认转 confirmed）
+
 支持子命令：
-  1. init      初始化 SQLite 表结构
-  2. recall    按嫌犯标识/别名精准召回 + 同槽位类别示范召回（供喂给日志子代理）
-  3. apply     主模型结案把关后批量执行 CREATE / CONFIRM / CORRECT 并自动导出 Markdown 快照
-  4. rollback  将指定 entity_key 回滚到上一次修改前的快照
-  5. export-md 手动导出 references/log_memory_snapshot.md 可读总览表
+  1. init          初始化数据库与可读快照
+  2. recall        词根模糊召回嫌犯地图与案例 + 输出全库轻量目录（供阶段二/三使用）
+  3. apply         结案把关后写入/更正客观地图，并追加新 candidate 候选案例或累加命中数
+  4. confirm-case  人工确认某条 candidate 案例转正为 confirmed
+  5. reject-case   删除误判的 candidate 候选案例
+  6. rollback-map  将指定模块的查证地图回滚至上一次修改前快照
+  7. export-md     手动刷新 references/log_memory_snapshot.md 可读总览文件
 """
 
 import argparse
 import json
+import re
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -220,69 +178,58 @@ SKILL_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DB_PATH = SKILL_ROOT / "assets" / "memory" / "power_memory.db"
 DEFAULT_SNAPSHOT_MD = SKILL_ROOT / "references" / "log_memory_snapshot.md"
 
+STOP_TOKENS = {
+    "com", "cn", "org", "net", "app", "system", "service", "server",
+    "manager", "mgr", "daemon", "process", "thread", "lock", "wakelock",
+    "runninglock", "irq", "wakeup", "ohos", "harmony", "android", "core",
+}
+
 DDL_SCRIPT = """
-CREATE TABLE IF NOT EXISTS module_log_memory (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    entity_key          TEXT NOT NULL UNIQUE,
-    entity_type         TEXT NOT NULL,
-    slot_category       TEXT NOT NULL,
-    aliases_and_tags    TEXT DEFAULT '[]',
-    effective_keywords  TEXT DEFAULT '[]',
-    noise_keywords      TEXT DEFAULT '[]',
-    normal_behavior     TEXT DEFAULT '',
-    abnormal_behavior   TEXT DEFAULT '',
-    owner_team_hint     TEXT DEFAULT '',
-    status              TEXT DEFAULT 'provisional',
-    hit_count           INTEGER DEFAULT 1,
-    last_ticket_id      TEXT DEFAULT '',
-    updated_at          TEXT NOT NULL
+CREATE TABLE IF NOT EXISTS module_lookup_map (
+    entity_key           TEXT PRIMARY KEY,
+    entity_type          TEXT NOT NULL,
+    aliases_and_tags     TEXT DEFAULT '[]',
+    log_source_hint      TEXT DEFAULT 'hilog',
+    trace_keywords       TEXT DEFAULT '[]',
+    noise_keywords       TEXT DEFAULT '[]',
+    normal_baseline_note TEXT DEFAULT '',
+    updated_at           TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_memory_slot_status
-    ON module_log_memory (slot_category, status);
+CREATE TABLE IF NOT EXISTS module_fault_cases (
+    case_id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_key           TEXT NOT NULL,
+    slot_category        TEXT NOT NULL,
+    case_title           TEXT NOT NULL,
+    symptom_in_db        TEXT DEFAULT '',
+    trigger_log_pattern  TEXT NOT NULL,
+    root_cause_detail    TEXT NOT NULL,
+    owner_team           TEXT DEFAULT '',
+    status               TEXT DEFAULT 'candidate',
+    hit_count            INTEGER DEFAULT 1,
+    sample_log           TEXT DEFAULT '',
+    last_ticket_id       TEXT DEFAULT '',
+    updated_at           TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_cases_entity ON module_fault_cases (entity_key, status);
+CREATE INDEX IF NOT EXISTS idx_cases_slot   ON module_fault_cases (slot_category, status);
 
 CREATE TABLE IF NOT EXISTS memory_revision_log (
-    rev_id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    entity_key      TEXT NOT NULL,
-    action          TEXT NOT NULL,
-    diff_reason     TEXT NOT NULL,
-    old_snapshot    TEXT DEFAULT NULL,
-    new_snapshot    TEXT NOT NULL,
-    log_sample      TEXT DEFAULT '',
-    ticket_id       TEXT DEFAULT '',
-    created_at      TEXT NOT NULL
+    rev_id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    entity_key    TEXT NOT NULL,
+    action        TEXT NOT NULL,
+    diff_reason   TEXT NOT NULL,
+    old_snapshot  TEXT DEFAULT NULL,
+    new_snapshot  TEXT NOT NULL,
+    ticket_id     TEXT DEFAULT '',
+    created_at    TEXT NOT NULL
 );
-
-CREATE INDEX IF NOT EXISTS idx_rev_entity
-    ON memory_revision_log (entity_key, rev_id DESC);
 """
 
 
 def now_iso() -> str:
     return datetime.now(timezone.utc).astimezone().isoformat(timespec="seconds")
-
-
-def merge_unique_list(old_json: str, new_items: List[str], replace: bool = False) -> str:
-    if replace:
-        cleaned = [x.strip() for x in new_items if x and x.strip()]
-        return json.dumps(list(dict.fromkeys(cleaned)), ensure_ascii=False)
-    try:
-        base = json.loads(old_json) if old_json else []
-    except json.JSONDecodeError:
-        base = []
-    merged = list(dict.fromkeys([x.strip() for x in (base + new_items) if x and x.strip()]))
-    return json.dumps(merged, ensure_ascii=False)
-
-
-def row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
-    d = dict(row)
-    for k in ("aliases_and_tags", "effective_keywords", "noise_keywords"):
-        if isinstance(d.get(k), str):
-            try:
-                d[k] = json.loads(d[k])
-            except json.JSONDecodeError:
-                d[k] = []
-    return d
 
 
 def connect_db(db_path: Path) -> sqlite3.Connection:
@@ -293,226 +240,379 @@ def connect_db(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def parse_json_list(raw: Any) -> List[str]:
+    if isinstance(raw, list):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    if isinstance(raw, str) and raw.strip():
+        try:
+            val = json.loads(raw)
+            if isinstance(val, list):
+                return [str(x).strip() for x in val if str(x).strip()]
+        except json.JSONDecodeError:
+            return [raw.strip()]
+    return []
+
+
+def merge_list_json(old_raw: Any, new_items: List[str], replace: bool = False) -> str:
+    cleaned_new = [str(x).strip() for x in (new_items or []) if str(x).strip()]
+    if replace:
+        return json.dumps(list(dict.fromkeys(cleaned_new)), ensure_ascii=False)
+    base = parse_json_list(old_raw)
+    return json.dumps(list(dict.fromkeys(base + cleaned_new)), ensure_ascii=False)
+
+
+def map_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    d = dict(row)
+    for k in ("aliases_and_tags", "trace_keywords", "noise_keywords"):
+        d[k] = parse_json_list(d.get(k))
+    return d
+
+
+def extract_tokens(name: str) -> List[str]:
+    """将包名、下划线锁名或驼峰名称拆分为有辨识度的词根，用于模糊召回"""
+    camel_split = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", name)
+    parts = re.split(r"[^a-zA-Z0-9\u4e00-\u9fa5]+", camel_split.lower())
+    tokens = [p for p in parts if len(p) >= 3 and p not in STOP_TOKENS]
+    return list(dict.fromkeys(tokens))
+
+
 def cmd_recall(db_path: Path, entities: List[str], slot_category: str = "") -> Dict[str, Any]:
     conn = connect_db(db_path)
-    exact_matches: List[Dict[str, Any]] = []
-    seen_keys = set()
+    matched_keys: List[str] = []
 
     for ent in entities:
         ent_clean = ent.strip()
         if not ent_clean:
             continue
+        # 1) 精确或包含匹配
         rows = conn.execute(
             """
-            SELECT * FROM module_log_memory
+            SELECT entity_key FROM module_lookup_map
             WHERE LOWER(entity_key) = LOWER(?)
                OR LOWER(aliases_and_tags) LIKE LOWER(?)
             """,
-            (ent_clean, f'%"{ent_clean}"%'),
+            (ent_clean, f"%{ent_clean}%"),
         ).fetchall()
         for r in rows:
-            if r["entity_key"] not in seen_keys:
-                seen_keys.add(r["entity_key"])
-                exact_matches.append(row_to_dict(r))
+            if r["entity_key"] not in matched_keys:
+                matched_keys.append(r["entity_key"])
 
-    category_examples: List[Dict[str, Any]] = []
+        # 2) 词根拆分模糊匹配
+        for tok in extract_tokens(ent_clean):
+            rows = conn.execute(
+                """
+                SELECT entity_key FROM module_lookup_map
+                WHERE LOWER(entity_key) LIKE ? OR LOWER(aliases_and_tags) LIKE ?
+                """,
+                (f"%{tok}%", f"%{tok}%"),
+            ).fetchall()
+            for r in rows:
+                if r["entity_key"] not in matched_keys:
+                    matched_keys.append(r["entity_key"])
+
+        # 3) 兜底查仅存在于故障表中的记录
+        rows = conn.execute(
+            "SELECT DISTINCT entity_key FROM module_fault_cases WHERE LOWER(entity_key) = LOWER(?)",
+            (ent_clean,),
+        ).fetchall()
+        for r in rows:
+            if r["entity_key"] not in matched_keys:
+                matched_keys.append(r["entity_key"])
+
+    recalled_modules = []
+    for key in matched_keys:
+        m_row = conn.execute(
+            "SELECT * FROM module_lookup_map WHERE entity_key = ?", (key,)
+        ).fetchone()
+        cases = conn.execute(
+            """
+            SELECT * FROM module_fault_cases
+            WHERE entity_key = ?
+            ORDER BY CASE WHEN status = 'confirmed' THEN 0 ELSE 1 END, hit_count DESC
+            """,
+            (key,),
+        ).fetchall()
+        recalled_modules.append({
+            "entity_key": key,
+            "lookup_map": map_row_to_dict(m_row) if m_row else None,
+            "fault_cases": [dict(c) for c in cases],
+        })
+
+    # 同维度已确认示范案例（供未知新模块照猫画虎）
+    slot_examples = []
     if slot_category:
         rows = conn.execute(
             """
-            SELECT * FROM module_log_memory
-            WHERE slot_category = ? AND status = 'verified'
-            ORDER BY hit_count DESC, updated_at DESC
-            LIMIT 2
+            SELECT * FROM module_fault_cases
+            WHERE slot_category = ? AND status = 'confirmed'
+            ORDER BY hit_count DESC LIMIT 2
             """,
             (slot_category,),
         ).fetchall()
         for r in rows:
-            if r["entity_key"] not in seen_keys:
-                category_examples.append(row_to_dict(r))
+            if r["entity_key"] not in matched_keys:
+                slot_examples.append(dict(r))
+
+    # 全库轻量目录兜底（防止奇怪缩写漏召回，大模型扫一眼目录即可补查）
+    catalog_rows = conn.execute(
+        """
+        SELECT m.entity_key, m.entity_type, m.aliases_and_tags,
+               COUNT(c.case_id) AS case_cnt
+        FROM module_lookup_map m
+        LEFT JOIN module_fault_cases c ON m.entity_key = c.entity_key
+        GROUP BY m.entity_key
+        ORDER BY m.entity_key ASC
+        """
+    ).fetchall()
+    catalog_index = [
+        f"{r['entity_key']} ({r['entity_type']}) | 别名/Tag: {', '.join(parse_json_list(r['aliases_and_tags'])) or '-'} | 案例数: {r['case_cnt']}"
+        for r in catalog_rows
+    ]
 
     conn.close()
     return {
-        "exact_matches": exact_matches,
-        "category_examples": category_examples,
+        "recalled_modules": recalled_modules,
+        "slot_confirmed_examples": slot_examples,
+        "catalog_index": catalog_index,
     }
 
 
 def export_markdown_snapshot(conn: sqlite3.Connection, md_path: Path) -> None:
-    rows = conn.execute(
-        "SELECT * FROM module_log_memory ORDER BY status DESC, hit_count DESC, entity_key ASC"
+    maps = conn.execute("SELECT * FROM module_lookup_map ORDER BY entity_key ASC").fetchall()
+    cases = conn.execute(
+        """
+        SELECT * FROM module_fault_cases
+        ORDER BY CASE WHEN status = 'confirmed' THEN 0 ELSE 1 END, entity_key ASC, hit_count DESC
+        """
     ).fetchall()
     md_path.parent.mkdir(parents=True, exist_ok=True)
 
+    cell = lambda s: str(s).replace("|", "\\|").replace("\n", "<br>")
     lines = [
-        "# 模块日志关键字与行为记忆库快照（自动生成，请勿直接手改）",
+        "# 功耗日志知识库可读快照（自动导出，请通过 `memory_store.py` 维护）",
         "",
-        f"> **最后同步时间**：`{now_iso()}` | **累计沉淀模块数**：`{len(rows)}`  ",
-        "> **说明**：本文件由 `scripts/stage4_evolve/memory_store.py` 从 `assets/memory/power_memory.db` 自动导出，供日常审阅与版本对比。如需人工修正，请通过 `memory_store.py` 更新数据库。",
+        f"> **同步时间**：`{now_iso()}` | **查证地图模块数**：`{len(maps)}` | **故障案例数**：`{len(cases)}`",
         "",
-        "| 模块标识 (`entity_key`) | 类型 / 维度 | 状态 (命中数) | 关联 Tag / 别名 | 有效关键字 (`✅`) | 噪音/避坑词 (`❌`) | 正常日志行为 | 异常高耗行为 & 转交方向 |",
-        "| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+        "## 一、 模块客观查证地图（`module_lookup_map`）",
+        "",
+        "| 模块标识 (`entity_key`) | 类型 / 日志源 | 真实 Tag / 别名 | 追责跳板与起止关键字 (`🔍`) | 已知无害噪音词 (`🔇`) | 正常态规律备忘 |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- |",
     ]
-
-    for r in rows:
-        d = row_to_dict(r)
-        cell = lambda s: str(s).replace("|", "\\|").replace("\n", "<br>")
+    for r in maps:
+        d = map_row_to_dict(r)
         tags = ", ".join(f"`{x}`" for x in d["aliases_and_tags"]) or "-"
-        eff = ", ".join(f"`{x}`" for x in d["effective_keywords"]) or "-"
+        trace = ", ".join(f"`{x}`" for x in d["trace_keywords"]) or "-"
         noise = ", ".join(f"`{x}`" for x in d["noise_keywords"]) or "-"
-        abn = d["abnormal_behavior"] or "-"
-        if d["owner_team_hint"]:
-            abn = f"{abn}（→ {d['owner_team_hint']}）"
         lines.append(
-            f"| `{cell(d['entity_key'])}` | `{cell(d['entity_type'])}`<br>`{cell(d['slot_category'])}` "
-            f"| `{cell(d['status'])}` ({d['hit_count']}) | {cell(tags)} | {cell(eff)} | {cell(noise)} "
-            f"| {cell(d['normal_behavior'] or '-')} | {cell(abn)} |"
+            f"| `{cell(d['entity_key'])}` | `{cell(d['entity_type'])}`<br>`{cell(d['log_source_hint'])}` "
+            f"| {cell(tags)} | {cell(trace)} | {cell(noise)} | {cell(d['normal_baseline_note'] or '-')} |"
+        )
+
+    lines.extend([
+        "",
+        "## 二、 模块具体故障死法库（`module_fault_cases`）",
+        "",
+        "> `confirmed` = 人工/结案已坐实；`candidate` = AI 审单新发现待人工确认（可用 `confirm-case` 转正或 `reject-case` 剔除）。",
+        "",
+        "| ID | 状态 (命中) | 归属模块 | 维度 | 故障标题 | 确诊日志特征 | 根因解释 & 转交方向 |",
+        "| :--- | :--- | :--- | :--- | :--- | :--- | :--- |",
+    ])
+    for c in cases:
+        team_str = f"（→ {c['owner_team']}）" if c["owner_team"] else ""
+        lines.append(
+            f"| `{c['case_id']}` | `{c['status']}` ({c['hit_count']}) | `{cell(c['entity_key'])}` "
+            f"| `{cell(c['slot_category'])}` | {cell(c['case_title'])} "
+            f"| `{cell(c['trigger_log_pattern'])}` | {cell(c['root_cause_detail'])}{cell(team_str)} |"
         )
 
     md_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def cmd_apply(db_path: Path, md_path: Path, proposals: List[Dict[str, Any]], ticket_id: str = "") -> List[Dict[str, str]]:
+def cmd_apply(db_path: Path, md_path: Path, payload: Dict[str, Any], ticket_id: str = "") -> Dict[str, Any]:
+    """
+    payload 结构示例：
+    {
+      "map_updates": [
+        {
+          "entity_key": "ProxyRunningLock",
+          "entity_type": "wakelock",
+          "aliases_and_tags": ["PowerMgrLock", "RunningLockMgr"],
+          "log_source_hint": "hilog",
+          "trace_keywords": ["AcquireRunningLock.*uid="],
+          "replace_trace_keywords": false,
+          "noise_keywords": ["UpdateLockState unchanged"],
+          "normal_baseline_note": "正常申请释放成对出现且单次 < 3s",
+          "diff_reason": "补充代理锁查真实调用方 uid 跳板词与无害噪音"
+        }
+      ],
+      "case_updates": [
+        {
+          "action": "HIT_EXISTING",
+          "case_id": 1
+        },
+        {
+          "action": "ADD_CANDIDATE",
+          "entity_key": "com.xxx.sync",
+          "slot_category": "off_wakelock",
+          "case_title": "远端鉴权超时每 5s 重试导致长持锁",
+          "symptom_in_db": "灭屏深睡率低，SyncWake 持锁 > 80%",
+          "trigger_log_pattern": "Auth token expired, retry in 5000ms",
+          "root_cause_detail": "Token 失效后未走异常释放锁分支，死循环重试阻塞休眠",
+          "owner_team": "云同步团队",
+          "sample_log": "02:14:05.110 1920 1988 E SyncTag: Auth token expired, retry in 5000ms"
+        }
+      ]
+    }
+    """
     conn = connect_db(db_path)
     ts = now_iso()
-    results = []
+    summary = {"map_applied": [], "case_applied": []}
 
     with conn:
-        for p in proposals:
-            key = p["entity_key"].strip()
-            req_action = p.get("action", "CREATE").upper()
+        # 1) 更新表 1：模块客观查证地图（支持首次创建或对比更正）
+        for m in payload.get("map_updates", []):
+            key = m["entity_key"].strip()
             existing = conn.execute(
-                "SELECT * FROM module_log_memory WHERE entity_key = ?", (key,)
+                "SELECT * FROM module_lookup_map WHERE entity_key = ?", (key,)
             ).fetchone()
+            replace_trace = bool(m.get("replace_trace_keywords", False))
 
             if existing is None:
-                # 首次写入：状态一律定为 provisional
-                actual_action = "CREATE"
-                old_snap_str = None
+                action = "CREATE_MAP"
+                old_snap = None
                 conn.execute(
                     """
-                    INSERT INTO module_log_memory (
-                        entity_key, entity_type, slot_category,
-                        aliases_and_tags, effective_keywords, noise_keywords,
-                        normal_behavior, abnormal_behavior, owner_team_hint,
-                        status, hit_count, last_ticket_id, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'provisional', 1, ?, ?)
+                    INSERT INTO module_lookup_map (
+                        entity_key, entity_type, aliases_and_tags, log_source_hint,
+                        trace_keywords, noise_keywords, normal_baseline_note, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     (
                         key,
-                        p.get("entity_type", "app"),
-                        p.get("slot_category", "general"),
-                        merge_unique_list("[]", p.get("aliases_and_tags", [])),
-                        merge_unique_list("[]", p.get("effective_keywords", [])),
-                        merge_unique_list("[]", p.get("noise_keywords", [])),
-                        p.get("normal_behavior", ""),
-                        p.get("abnormal_behavior", ""),
-                        p.get("owner_team_hint", ""),
-                        ticket_id,
+                        m.get("entity_type", "app"),
+                        merge_list_json("[]", m.get("aliases_and_tags", [])),
+                        m.get("log_source_hint", "hilog"),
+                        merge_list_json("[]", m.get("trace_keywords", [])),
+                        merge_list_json("[]", m.get("noise_keywords", [])),
+                        m.get("normal_baseline_note", ""),
                         ts,
-                    ),
-                )
-            elif req_action == "CONFIRM":
-                # 二次对比吻合：命中数 +1，状态自动晋升为 verified，并增量合并新发现的 Tag/关键字/噪音词
-                actual_action = "CONFIRM"
-                old_snap_str = json.dumps(row_to_dict(existing), ensure_ascii=False)
-                new_hits = int(existing["hit_count"]) + 1
-                conn.execute(
-                    """
-                    UPDATE module_log_memory
-                    SET aliases_and_tags   = ?,
-                        effective_keywords = ?,
-                        noise_keywords     = ?,
-                        normal_behavior    = COALESCE(NULLIF(?, ''), normal_behavior),
-                        abnormal_behavior  = COALESCE(NULLIF(?, ''), abnormal_behavior),
-                        owner_team_hint    = COALESCE(NULLIF(?, ''), owner_team_hint),
-                        status             = 'verified',
-                        hit_count          = ?,
-                        last_ticket_id     = ?,
-                        updated_at         = ?
-                    WHERE entity_key = ?
-                    """,
-                    (
-                        merge_unique_list(existing["aliases_and_tags"], p.get("aliases_and_tags", [])),
-                        merge_unique_list(existing["effective_keywords"], p.get("effective_keywords", [])),
-                        merge_unique_list(existing["noise_keywords"], p.get("noise_keywords", [])),
-                        p.get("normal_behavior", ""),
-                        p.get("abnormal_behavior", ""),
-                        p.get("owner_team_hint", ""),
-                        new_hits,
-                        ticket_id,
-                        ts,
-                        key,
                     ),
                 )
             else:
-                # CORRECT（或重复提交时原地更正）：用新实测的有效关键字与行为覆盖偏差项，噪音词累加保留
-                actual_action = "CORRECT"
-                old_snap_str = json.dumps(row_to_dict(existing), ensure_ascii=False)
-                new_hits = int(existing["hit_count"]) + 1
-                replace_eff = bool(p.get("effective_keywords"))
+                action = "UPDATE_MAP"
+                old_snap = json.dumps(map_row_to_dict(existing), ensure_ascii=False)
                 conn.execute(
                     """
-                    UPDATE module_log_memory
-                    SET entity_type        = COALESCE(NULLIF(?, ''), entity_type),
-                        slot_category      = COALESCE(NULLIF(?, ''), slot_category),
-                        aliases_and_tags   = ?,
-                        effective_keywords = ?,
-                        noise_keywords     = ?,
-                        normal_behavior    = COALESCE(NULLIF(?, ''), normal_behavior),
-                        abnormal_behavior  = COALESCE(NULLIF(?, ''), abnormal_behavior),
-                        owner_team_hint    = COALESCE(NULLIF(?, ''), owner_team_hint),
-                        hit_count          = ?,
-                        last_ticket_id     = ?,
-                        updated_at         = ?
+                    UPDATE module_lookup_map
+                    SET entity_type          = COALESCE(NULLIF(?, ''), entity_type),
+                        aliases_and_tags     = ?,
+                        log_source_hint      = COALESCE(NULLIF(?, ''), log_source_hint),
+                        trace_keywords       = ?,
+                        noise_keywords       = ?,
+                        normal_baseline_note = COALESCE(NULLIF(?, ''), normal_baseline_note),
+                        updated_at           = ?
                     WHERE entity_key = ?
                     """,
                     (
-                        p.get("entity_type", ""),
-                        p.get("slot_category", ""),
-                        merge_unique_list(existing["aliases_and_tags"], p.get("aliases_and_tags", [])),
-                        merge_unique_list(existing["effective_keywords"], p.get("effective_keywords", []), replace=replace_eff),
-                        merge_unique_list(existing["noise_keywords"], p.get("noise_keywords", [])),
-                        p.get("normal_behavior", ""),
-                        p.get("abnormal_behavior", ""),
-                        p.get("owner_team_hint", ""),
-                        new_hits,
-                        ticket_id,
+                        m.get("entity_type", ""),
+                        merge_list_json(existing["aliases_and_tags"], m.get("aliases_and_tags", [])),
+                        m.get("log_source_hint", ""),
+                        merge_list_json(existing["trace_keywords"], m.get("trace_keywords", []), replace=replace_trace),
+                        merge_list_json(existing["noise_keywords"], m.get("noise_keywords", [])),
+                        m.get("normal_baseline_note", ""),
                         ts,
                         key,
                     ),
                 )
 
-            updated_row = conn.execute(
-                "SELECT * FROM module_log_memory WHERE entity_key = ?", (key,)
+            new_row = conn.execute(
+                "SELECT * FROM module_lookup_map WHERE entity_key = ?", (key,)
             ).fetchone()
-            new_snap_str = json.dumps(row_to_dict(updated_row), ensure_ascii=False)
-
             conn.execute(
                 """
                 INSERT INTO memory_revision_log (
-                    entity_key, action, diff_reason, old_snapshot, new_snapshot, log_sample, ticket_id, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    entity_key, action, diff_reason, old_snapshot, new_snapshot, ticket_id, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     key,
-                    actual_action,
-                    p.get("diff_reason", f"执行 {actual_action} 更新"),
-                    old_snap_str,
-                    new_snap_str,
-                    p.get("log_sample", ""),
+                    action,
+                    m.get("diff_reason", action),
+                    old_snap,
+                    json.dumps(map_row_to_dict(new_row), ensure_ascii=False),
                     ticket_id,
                     ts,
                 ),
             )
-            results.append({"entity_key": key, "action": actual_action, "status": updated_row["status"]})
+            summary["map_applied"].append({"entity_key": key, "action": action})
+
+        # 2) 更新表 2：故障死法库（一对多，新增固定为 candidate，绝不覆盖同模块旧案例）
+        for c in payload.get("case_updates", []):
+            c_act = c.get("action", "ADD_CANDIDATE").upper()
+            if c_act == "HIT_EXISTING" and c.get("case_id") is not None:
+                conn.execute(
+                    """
+                    UPDATE module_fault_cases
+                    SET hit_count = hit_count + 1,
+                        last_ticket_id = COALESCE(NULLIF(?, ''), last_ticket_id),
+                        updated_at = ?
+                    WHERE case_id = ?
+                    """,
+                    (ticket_id, ts, int(c["case_id"])),
+                )
+                summary["case_applied"].append({"action": "HIT_EXISTING", "case_id": int(c["case_id"])})
+            else:
+                cur = conn.execute(
+                    """
+                    INSERT INTO module_fault_cases (
+                        entity_key, slot_category, case_title, symptom_in_db,
+                        trigger_log_pattern, root_cause_detail, owner_team,
+                        status, hit_count, sample_log, last_ticket_id, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'candidate', 1, ?, ?, ?)
+                    """,
+                    (
+                        c["entity_key"].strip(),
+                        c.get("slot_category", "general"),
+                        c["case_title"].strip(),
+                        c.get("symptom_in_db", ""),
+                        c["trigger_log_pattern"].strip(),
+                        c["root_cause_detail"].strip(),
+                        c.get("owner_team", ""),
+                        c.get("sample_log", ""),
+                        ticket_id,
+                        ts,
+                    ),
+                )
+                summary["case_applied"].append({
+                    "action": "ADD_CANDIDATE",
+                    "case_id": cur.lastrowid,
+                    "entity_key": c["entity_key"].strip(),
+                })
 
         export_markdown_snapshot(conn, md_path)
 
     conn.close()
-    return results
+    return summary
 
 
-def cmd_rollback(db_path: Path, md_path: Path, entity_key: str) -> Dict[str, Any]:
+def cmd_set_case_status(db_path: Path, md_path: Path, case_id: int, confirm: bool) -> Dict[str, Any]:
+    conn = connect_db(db_path)
+    with conn:
+        if confirm:
+            conn.execute(
+                "UPDATE module_fault_cases SET status = 'confirmed', updated_at = ? WHERE case_id = ?",
+                (now_iso(), case_id),
+            )
+            res = {"ok": True, "case_id": case_id, "new_status": "confirmed"}
+        else:
+            conn.execute("DELETE FROM module_fault_cases WHERE case_id = ?", (case_id,))
+            res = {"ok": True, "case_id": case_id, "new_status": "deleted"}
+        export_markdown_snapshot(conn, md_path)
+    conn.close()
+    return res
+
+
+def cmd_rollback_map(db_path: Path, md_path: Path, entity_key: str) -> Dict[str, Any]:
     conn = connect_db(db_path)
     rev = conn.execute(
         """
@@ -524,32 +624,25 @@ def cmd_rollback(db_path: Path, md_path: Path, entity_key: str) -> Dict[str, Any
     ).fetchone()
     if rev is None:
         conn.close()
-        return {"ok": False, "reason": f"未找到 {entity_key} 可回滚的历史快照"}
+        return {"ok": False, "reason": f"未找到 {entity_key} 可回滚的历史修改快照"}
 
     old = json.loads(rev["old_snapshot"])
     ts = now_iso()
     with conn:
         conn.execute(
             """
-            UPDATE module_log_memory
-            SET entity_type = ?, slot_category = ?, aliases_and_tags = ?,
-                effective_keywords = ?, noise_keywords = ?, normal_behavior = ?,
-                abnormal_behavior = ?, owner_team_hint = ?, status = ?,
-                hit_count = ?, last_ticket_id = ?, updated_at = ?
+            UPDATE module_lookup_map
+            SET entity_type = ?, aliases_and_tags = ?, log_source_hint = ?,
+                trace_keywords = ?, noise_keywords = ?, normal_baseline_note = ?, updated_at = ?
             WHERE entity_key = ?
             """,
             (
                 old["entity_type"],
-                old["slot_category"],
                 json.dumps(old["aliases_and_tags"], ensure_ascii=False),
-                json.dumps(old["effective_keywords"], ensure_ascii=False),
+                old["log_source_hint"],
+                json.dumps(old["trace_keywords"], ensure_ascii=False),
                 json.dumps(old["noise_keywords"], ensure_ascii=False),
-                old["normal_behavior"],
-                old["abnormal_behavior"],
-                old["owner_team_hint"],
-                old["status"],
-                old["hit_count"],
-                old["last_ticket_id"],
+                old["normal_baseline_note"],
                 ts,
                 entity_key,
             ),
@@ -558,36 +651,41 @@ def cmd_rollback(db_path: Path, md_path: Path, entity_key: str) -> Dict[str, Any
             """
             INSERT INTO memory_revision_log (
                 entity_key, action, diff_reason, old_snapshot, new_snapshot, ticket_id, created_at
-            ) VALUES (?, 'MANUAL', '触发回滚至上一版本快照', ?, ?, '', ?)
+            ) VALUES (?, 'ROLLBACK_MAP', '人工回滚至修改前快照', ?, ?, '', ?)
             """,
             (entity_key, rev["new_snapshot"], rev["old_snapshot"], ts),
         )
         export_markdown_snapshot(conn, md_path)
-
     conn.close()
     return {"ok": True, "restored_entity": entity_key}
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="功耗审单日志关键字与行为 SQLite 记忆库管理 CLI")
-    parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH, help="SQLite 数据库文件路径")
-    parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT_MD, help="导出的 Markdown 快照路径")
+    parser = argparse.ArgumentParser(description="功耗审单 SQLite 双层知识库管理 CLI")
+    parser.add_argument("--db", type=Path, default=DEFAULT_DB_PATH)
+    parser.add_argument("--snapshot", type=Path, default=DEFAULT_SNAPSHOT_MD)
     sub = parser.add_subparsers(dest="cmd", required=True)
 
-    sub.add_parser("init", help="初始化数据库与快照")
+    sub.add_parser("init", help="初始化双层表与可读快照")
 
-    p_recall = sub.add_parser("recall", help="按嫌犯名列表与槽位类别召回历史记忆")
-    p_recall.add_argument("--entities", nargs="+", required=True, help="嫌犯包名/锁名/IRQ 列表")
-    p_recall.add_argument("--slot", default="", help="异常维度类别（如 off_wakelock）")
+    p_recall = sub.add_parser("recall", help="分词模糊召回模块查证地图与故障案例")
+    p_recall.add_argument("--entities", nargs="+", required=True, help="嫌犯名称列表")
+    p_recall.add_argument("--slot", default="", help="异常维度分类")
 
-    p_apply = sub.add_parser("apply", help="传入变更提案 JSON 文件或字符串更新记忆库")
-    p_apply.add_argument("--proposals-json", required=True, help="JSON 文件路径或内联 JSON 数组字符串")
-    p_apply.add_argument("--ticket", default="", help="来源单号标识")
+    p_apply = sub.add_parser("apply", help="写入/更正查证地图并记录候选故障案例")
+    p_apply.add_argument("--payload-json", required=True, help="JSON 文件路径或 JSON 字符串")
+    p_apply.add_argument("--ticket", default="", help="来源单号")
 
-    p_rb = sub.add_parser("rollback", help="将指定模块回滚到修改前状态")
-    p_rb.add_argument("--entity", required=True, help="要回滚的 entity_key")
+    p_conf = sub.add_parser("confirm-case", help="人工确认候选案例转正为 confirmed")
+    p_conf.add_argument("--case-id", type=int, required=True)
 
-    sub.add_parser("export-md", help="重新导出 Markdown 快照表")
+    p_rej = sub.add_parser("reject-case", help="删除误判的候选案例")
+    p_rej.add_argument("--case-id", type=int, required=True)
+
+    p_rb = sub.add_parser("rollback-map", help="回滚指定模块的查证地图到上一版")
+    p_rb.add_argument("--entity", required=True)
+
+    sub.add_parser("export-md", help="刷新 Markdown 快照文件")
 
     args = parser.parse_args()
     if args.cmd == "init":
@@ -596,18 +694,18 @@ def main() -> None:
         conn.close()
         print(json.dumps({"ok": True, "db": str(args.db), "snapshot": str(args.snapshot)}, ensure_ascii=False))
     elif args.cmd == "recall":
-        res = cmd_recall(args.db, args.entities, args.slot)
-        print(json.dumps(res, ensure_ascii=False, indent=2))
+        print(json.dumps(cmd_recall(args.db, args.entities, args.slot), ensure_ascii=False, indent=2))
     elif args.cmd == "apply":
-        raw = args.proposals_json
-        p_path = Path(raw)
-        data = json.loads(p_path.read_text(encoding="utf-8") if p_path.is_file() else raw)
-        proposals = data if isinstance(data, list) else data.get("memory_proposals", [data])
-        res = cmd_apply(args.db, args.snapshot, proposals, args.ticket)
-        print(json.dumps({"ok": True, "applied": res}, ensure_ascii=False, indent=2))
-    elif args.cmd == "rollback":
-        res = cmd_rollback(args.db, args.snapshot, args.entity)
-        print(json.dumps(res, ensure_ascii=False, indent=2))
+        raw = args.payload_json
+        p = Path(raw)
+        payload = json.loads(p.read_text(encoding="utf-8") if p.is_file() else raw)
+        print(json.dumps({"ok": True, **cmd_apply(args.db, args.snapshot, payload, args.ticket)}, ensure_ascii=False, indent=2))
+    elif args.cmd == "confirm-case":
+        print(json.dumps(cmd_set_case_status(args.db, args.snapshot, args.case_id, True), ensure_ascii=False))
+    elif args.cmd == "reject-case":
+        print(json.dumps(cmd_set_case_status(args.db, args.snapshot, args.case_id, False), ensure_ascii=False))
+    elif args.cmd == "rollback-map":
+        print(json.dumps(cmd_rollback_map(args.db, args.snapshot, args.entity), ensure_ascii=False))
     elif args.cmd == "export-md":
         conn = connect_db(args.db)
         export_markdown_snapshot(conn, args.snapshot)
@@ -621,30 +719,22 @@ if __name__ == "__main__":
 
 ---
 
-## 六、 仓库对应文件具体修改映射表
+## 五、 内网落地修改清单（仅改阶段二~四，阶段一完全不动）
 
-将这套机制合入 `.claude/skills/power-review/` 时，各文件的具体改动如下：
-
-| 序号 | 目标文件路径 | 具体修改内容 |
+| 序号 | 内网目标文件 | 具体修改内容 |
 | :--- | :--- | :--- |
-| 1 | `scripts/stage4_evolve/memory_store.py` *(新增)* | 落地第五节的零依赖 SQLite 记忆库管理 CLI 脚本，并运行 `python memory_store.py init` 生成初始库与快照文件。 |
-| 2 | `.claude/skills/power-review/SKILL.md` | • **阶段二末尾**：增加调用 `memory_store.py recall` 按 `.db` 嫌犯列表精准召回 SQLite 历史关键字与行为记忆；<br>• **阶段三第 3 步**：删除“仅调用固定脚本查日志”的表述，改为**派发独立【日志调查子代理】**（带时间围栏 `[T_start - 10min, T_end]`、`Ref` 对照窗与历史记忆，执行“先对比验证旧关键字 $\rightarrow$ 再自由探索 $\rightarrow$ `Ref` 段反证”）；<br>• **阶段四**：加入主模型过完三问自检后调用 `memory_store.py apply` 执行首次记录（`CREATE`）、二次确认（`CONFIRM`）或偏差更正（`CORRECT`），并在审单报告末尾展示本次记忆库变更摘要。 |
-| 3 | `.claude/skills/power-review/references/general_guide.md` | 更新第四章“查日志通用破案思路”，补充子代理自由探索的四步纪律（先避开 `noise_keywords` 核验 `effective_keywords`、时间围栏约束、`Ref` 正常段频次反证、连同无辜模块的正常行为一并沉淀）。 |
-| 4 | `.claude/skills/power-review/assets/templates/iteration_patch_card.md` | 将原有的纯 Markdown 卡片追加模板，升级为 **【一、SQLite 关键字与行为记忆库变更明细（`CREATE / CONFIRM / CORRECT`）】** + **【二、全局通用规则补充建议（可选）】** 双栏结构，清晰展示“本次新记了哪些关键字/行为，或更正了上次哪条偏差记录”。 |
-| 5 | `.claude/skills/power-review/scripts/stage3_log/README.md` | 将定位从“大模型唯一查日志入口”降级调整为 **“供日志调查子代理按需选用的大文件时间窗裁剪与脱敏预处理辅助工具”**（普通体积日志由子代理直接用原生检索/阅读自由探索；若内网已删除旧查日志工具脚本，仅保留时间格式对齐与大压缩包切片能力即可）。 |
-| 6 | `.claude/skills/power-review/scripts/stage4_evolve/README.md` | 更新职责说明：核心负责维护 `assets/memory/power_memory.db`（首次记录、二次对比确认/更正、快照备份回滚）及自动导出 `references/log_memory_snapshot.md`。 |
+| 1 | `scripts/stage4_evolve/memory_store.py` *(新增/替换)* | 落地第四节的 SQLite 双层知识库脚本，运行 `init` 生成 `power_memory.db` 与 `references/log_memory_snapshot.md`；顺手把你现有的几条核心老经验用 `apply` + `confirm-case` 录入作为首批种子。 |
+| 2 | `scripts/stage3_log/log_funnel.py` *(新增单文件)* | 对照内网真实日志时间格式，实现 100 行左右的薄漏斗：**① 检查 `[T_start, T_end]` 是否被冲掉（冲掉则直接止损退出）**；**② 切出 `[T_start - 10min, T_end]` 临时小文件**；**③ 输出 Top 10 异常活跃/暴增 `Tag (PID)`**。 |
+| 3 | `.claude/skills/power-review/SKILL.md` | • **阶段二**：调用 `memory_store.py recall` 词根模糊召回嫌犯的《查证地图》+《故障案例》+《全库轻量目录》；<br>• **阶段三**：先跑 `log_funnel.py` 预检切片；确认日志存在后，派发**【日志调查子代理】**在小切片文件内按“核对地图与已知案例 $\rightarrow$ 顺 Top 10 暴增 Tag 自由探索 $\rightarrow$ `Ref` 段反证”破案；<br>• **阶段四**：主模型过完三问自检后调用 `memory_store.py apply`——客观 Tag/跳板词/噪音词自动更新进表 1，新发现的死法以 `candidate` 存入表 2 并在报告末尾提示人工确认编号（`case_id`）。 |
+| 4 | `.claude/skills/power-review/assets/templates/iteration_patch_card.md` | 报告末尾迭代块简化为两行清爽提示：<br>1) 本次自动更新了哪个模块的客观查证地图（Tag/噪音词）；<br>2) 若新增了候选故障案例（`case_id = X, status = candidate`），提示你确认无误后执行 `confirm-case --case-id X` 转正（或猜错时 `reject-case` 删掉）。 |
 
 ---
 
-## 七、 附：回内网一键交给 AI 自动落地改造的指令模板
-
-将本文档放入项目根目录后，可直接把下面这段话发给内网的 Coding Agent，让它一次性把 SQLite 记忆库与子代理流程接好：
+## 六、 附：回内网直接发给 AI 执行改造的指令模板
 
 ```text
-请完整阅读根目录下的 `log_subagent_memory_upgrade.md`，按文档第六节的“文件修改映射表”对 `.claude/skills/power-review/` 完成阶段三与阶段四升级：
-1. 新建 `.claude/skills/power-review/scripts/stage4_evolve/memory_store.py`（实现 `init / recall / apply / rollback / export-md` 五个子命令），运行 `init` 初始化 `assets/memory/power_memory.db` 与 `references/log_memory_snapshot.md`，并用一条模拟数据测试 `CREATE -> CONFIRM -> CORRECT -> rollback` 全链路无报错；
-2. 更新 `.claude/skills/power-review/SKILL.md`、`references/general_guide.md`、`assets/templates/iteration_patch_card.md` 以及 `scripts/stage3_log/README.md`、`scripts/stage4_evolve/README.md`：
-   - 将阶段三查日志正式切换为“主模型按嫌犯从 SQLite 召回记忆 -> 派发带时间围栏与 Ref 对照窗的【日志调查子代理】（先对比验证种子关键字、再自由探索、必做 Ref 反证、只读回传 JSON）”；
-   - 将阶段四切换为“主模型三问自检把关后单点调用 `memory_store.py apply` 完成首次记录或二次对比更正，并自动刷新可读快照表”。
-注意保持所有规则与说明的通用性，不要写入任何硬编码的虚构私有业务阈值。
+请阅读根目录下的 `log_subagent_memory_upgrade.md`，保持我现有的阶段一 `.db` 解析代码不动，按文档第五节清单完成阶段二~四升级：
+1. 创建/更新 `.claude/skills/power-review/scripts/stage4_evolve/memory_store.py`（实现 `module_lookup_map` 客观查证地图与 `module_fault_cases` 一对多候选案例双层 SQLite 表，支持词根模糊召回、轻量目录兜底、`candidate -> confirmed` 转正与快照导出），并跑一次 `init` 和自测验证；
+2. 对照我仓库现有的真实日志格式，在 `scripts/stage3_log/` 下实现轻量预处理漏斗 `log_funnel.py`（检查异常时间段日志是否已被环形缓冲区冲掉、切出 `[T_start - 10min, T_end]` 窗口日志小文件、统计相比 Ref 暴增的 Top 10 Tag/PID）；
+3. 更新 `.claude/skills/power-review/SKILL.md`、`references/general_guide.md` 和 `assets/templates/iteration_patch_card.md`，将查日志与沉淀流程串成：“漏斗预检止损与切片 -> 子代理基于查证地图与暴增 Tag 在小文件内自由探索 + Ref 反证 -> 客观查证地图自动对比更正 + 新故障案例存为 candidate 待人工确认”。
 ```
