@@ -38,9 +38,14 @@
 
 ---
 
-## 二、 SQLite 双层知识库设计（`power_memory.db`）
+## 二、 SQLite 双层知识库设计（`power_memory.db`，彻底替代原 `case_knowledge_base.md`）
 
 数据库存放路径建议：`.claude/skills/power-review/assets/memory/power_memory.db`（仅用 Python 自带 `sqlite3`，零外部依赖）。
+
+> **⚠️ 彻底废除双轨制（删除原 `references/case_knowledge_base.md`）**：  
+> 上线 `power_memory.db` 后，**不要再同时维护原有的 `case_knowledge_base.md`**，否则两边查、两边记必然打架。回内网初始化时，把你现有的历史排查笔记一次性导入 `power_memory.db`（直接标为 `confirmed`）后即可删掉旧的 `case_knowledge_base.md`。此后全套资料只有两块，分工零重叠：
+> 1. **`general_guide.md`（及亮/灭屏规则 `.md`）**：只存跟具体 App 无关的**全局通用审单规矩**（真/模分层、豁免白名单、三问自检）；
+> 2. **`power_memory.db`（自动导出只读视图 `references/log_memory_snapshot.md`）**：唯一承接所有**跟具体模块有关**的查法地图与历史故障案例。
 
 ### 为什么必须拆成两张业务表？
 同一个系统模块（例如音频服务、系统代理锁、网络管理、某常驻核心进程）在实战中往往有 **3~5 种完全不同的耗电死法**。
@@ -131,11 +136,11 @@ CREATE TABLE IF NOT EXISTS memory_revision_log (
    - 自动避开 `noise_keywords` 中的已知无害刷屏词；
    - 若嫌犯是系统代理服务/公共锁，先搜 `trace_keywords` 揪出真正发起请求的业务进程 `UID/PID`；
    - 对照该模块名下的 `module_fault_cases`：若命中 `confirmed` 案例特征词则直接锁定；若命中 `candidate` 候选案例，仍需严格核验上下文是否真能解释本次耗电。
-2. **第二步：在小切片文件内自由探索（老案例未命中时全面放开）**
-   - 直接在 `tmp_target_slice.log` 这个干净的小范围内使用 `Grep` 和 `Read` 自由探索：
-     - 重点排查 **Top 10 暴增 `Tag/PID`** 为什么在该时段狂刷；
-     - 在切片开头（含灭屏前 10 分钟）搜嫌犯的申请/开启打印，顺着 `PID` 往下看是不是因为中途报错、超时或条件分支漏了没走释放；
-     - 遇到跨进程 `IPC/Binder` 等待下游服务时，直接顺着日志里的目标服务名在同一切片里继续搜下游服务日志。
+2. **第二步：在小切片内抓现行 + 必要时拿精准标识回原目录往前追起点**
+   - **主战场在 `tmp_target_slice.log` 自由探索**：使用 `Grep` 和 `Read` 重点排查 **Top 10 暴增 `Tag/PID`** 为什么在该时段狂刷，以及跨进程 `IPC/Binder` 是否卡在等下游服务；
+   - **锁/任务在更早之前（如 3 小时前）就已经开启怎么办？（精准回溯机制）**：
+     - 严禁一开始就在几百 MB 原日志目录里搜宽泛词（如 `lock`、`error`）；
+     - 但当子代理在小切片里已经锁定了持续活动的**具体锁编号、唯一实例 ID 或嫌犯进程 `PID / 专属 Tag`**，却在小切片（含前 10 分钟）内没看到它的首次申请/开启起点时，**允许子代理拿着这个精准标识回到原始全量日志目录往前检索**，定位数小时前是谁、在什么场景下触发了申请却一直未释放。
 3. **第三步：`Ref` 正常段反证 + 结构化回传**
    - 凡是新抓到的疑似异常日志，若 `Ref` 段有日志覆盖，**必须去 `Ref` 段检索一次频次**——确认正常段没有同频狂打后才可定案（若正常段也在狂打，则推翻重查，并顺手将该词放入拟更新的 `noise_keywords`！）；
    - 向主模型返回调查结论与两条独立的记忆提案：
@@ -546,7 +551,7 @@ def cmd_apply(db_path: Path, md_path: Path, payload: Dict[str, Any], ticket_id: 
             )
             summary["map_applied"].append({"entity_key": key, "action": action})
 
-        # 2) 更新表 2：故障死法库（一对多，新增固定为 candidate，绝不覆盖同模块旧案例）
+        # 2) 更新表 2：故障死法库（一对多，AI 新增固定为 candidate，导入历史人工笔记可用 IMPORT_CONFIRMED）
         for c in payload.get("case_updates", []):
             c_act = c.get("action", "ADD_CANDIDATE").upper()
             if c_act == "HIT_EXISTING" and c.get("case_id") is not None:
@@ -562,13 +567,14 @@ def cmd_apply(db_path: Path, md_path: Path, payload: Dict[str, Any], ticket_id: 
                 )
                 summary["case_applied"].append({"action": "HIT_EXISTING", "case_id": int(c["case_id"])})
             else:
+                init_status = "confirmed" if c_act == "IMPORT_CONFIRMED" else "candidate"
                 cur = conn.execute(
                     """
                     INSERT INTO module_fault_cases (
                         entity_key, slot_category, case_title, symptom_in_db,
                         trigger_log_pattern, root_cause_detail, owner_team,
                         status, hit_count, sample_log, last_ticket_id, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, 'candidate', 1, ?, ?, ?)
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?)
                     """,
                     (
                         c["entity_key"].strip(),
@@ -578,15 +584,17 @@ def cmd_apply(db_path: Path, md_path: Path, payload: Dict[str, Any], ticket_id: 
                         c["trigger_log_pattern"].strip(),
                         c["root_cause_detail"].strip(),
                         c.get("owner_team", ""),
+                        init_status,
                         c.get("sample_log", ""),
                         ticket_id,
                         ts,
                     ),
                 )
                 summary["case_applied"].append({
-                    "action": "ADD_CANDIDATE",
+                    "action": c_act if c_act == "IMPORT_CONFIRMED" else "ADD_CANDIDATE",
                     "case_id": cur.lastrowid,
                     "entity_key": c["entity_key"].strip(),
+                    "status": init_status,
                 })
 
         export_markdown_snapshot(conn, md_path)
@@ -723,9 +731,9 @@ if __name__ == "__main__":
 
 | 序号 | 内网目标文件 | 具体修改内容 |
 | :--- | :--- | :--- |
-| 1 | `scripts/stage4_evolve/memory_store.py` *(新增/替换)* | 落地第四节的 SQLite 双层知识库脚本，运行 `init` 生成 `power_memory.db` 与 `references/log_memory_snapshot.md`；顺手把你现有的几条核心老经验用 `apply` + `confirm-case` 录入作为首批种子。 |
+| 1 | `scripts/stage4_evolve/memory_store.py` *(新增/替换)*<br>& `references/case_knowledge_base.md` *(迁移后删除)* | 落地第四节的 SQLite 双层知识库脚本，运行 `init` 生成 `power_memory.db` 与 `references/log_memory_snapshot.md`；将原 `case_knowledge_base.md` 中的已有实战案例用 `"action": "IMPORT_CONFIRMED"` 一次性导入 SQLite 后，**删除原 `case_knowledge_base.md`**，杜绝双库并存打架。 |
 | 2 | `scripts/stage3_log/log_funnel.py` *(新增单文件)* | 对照内网真实日志时间格式，实现 100 行左右的薄漏斗：**① 检查 `[T_start, T_end]` 是否被冲掉（冲掉则直接止损退出）**；**② 切出 `[T_start - 10min, T_end]` 临时小文件**；**③ 输出 Top 10 异常活跃/暴增 `Tag (PID)`**。 |
-| 3 | `.claude/skills/power-review/SKILL.md` | • **阶段二**：调用 `memory_store.py recall` 词根模糊召回嫌犯的《查证地图》+《故障案例》+《全库轻量目录》；<br>• **阶段三**：先跑 `log_funnel.py` 预检切片；确认日志存在后，派发**【日志调查子代理】**在小切片文件内按“核对地图与已知案例 $\rightarrow$ 顺 Top 10 暴增 Tag 自由探索 $\rightarrow$ `Ref` 段反证”破案；<br>• **阶段四**：主模型过完三问自检后调用 `memory_store.py apply`——客观 Tag/跳板词/噪音词自动更新进表 1，新发现的死法以 `candidate` 存入表 2 并在报告末尾提示人工确认编号（`case_id`）。 |
+| 3 | `.claude/skills/power-review/SKILL.md` | • 移除对旧 `case_knowledge_base.md` 的引用，统一指向 `power_memory.db`（及只读快照 `references/log_memory_snapshot.md`）；<br>• **阶段二**：调用 `memory_store.py recall` 词根模糊召回嫌犯的《查证地图》+《故障案例》+《全库轻量目录》；<br>• **阶段三**：先跑 `log_funnel.py` 预检切片；确认日志存在后，派发**【日志调查子代理】**——主战场在小切片文件内核对地图、顺 Top 10 暴增 Tag 自由探索；**若小切片内未见锁/任务开启起点，允许拿着已锁定的精准锁名/PID 回原始日志目录往前追溯起点**；最后做 `Ref` 段反证；<br>• **阶段四**：主模型过完三问自检后调用 `memory_store.py apply`——客观 Tag/跳板词/噪音词自动更新进表 1，新发现的死法以 `candidate` 存入表 2 并在报告末尾提示人工确认编号（`case_id`）。 |
 | 4 | `.claude/skills/power-review/assets/templates/iteration_patch_card.md` | 报告末尾迭代块简化为两行清爽提示：<br>1) 本次自动更新了哪个模块的客观查证地图（Tag/噪音词）；<br>2) 若新增了候选故障案例（`case_id = X, status = candidate`），提示你确认无误后执行 `confirm-case --case-id X` 转正（或猜错时 `reject-case` 删掉）。 |
 
 ---
@@ -734,7 +742,7 @@ if __name__ == "__main__":
 
 ```text
 请阅读根目录下的 `log_subagent_memory_upgrade.md`，保持我现有的阶段一 `.db` 解析代码不动，按文档第五节清单完成阶段二~四升级：
-1. 创建/更新 `.claude/skills/power-review/scripts/stage4_evolve/memory_store.py`（实现 `module_lookup_map` 客观查证地图与 `module_fault_cases` 一对多候选案例双层 SQLite 表，支持词根模糊召回、轻量目录兜底、`candidate -> confirmed` 转正与快照导出），并跑一次 `init` 和自测验证；
+1. 创建/更新 `.claude/skills/power-review/scripts/stage4_evolve/memory_store.py`（实现 `module_lookup_map` 客观查证地图与 `module_fault_cases` 一对多候选案例双层 SQLite 表，支持词根模糊召回、轻量目录兜底、`IMPORT_CONFIRMED` 批量导入、`candidate -> confirmed` 转正与快照导出），运行 `init` 初始化；随后把原 `references/case_knowledge_base.md` 中的正式案例导入进 `power_memory.db`（标为 `confirmed`），并删除旧的 `case_knowledge_base.md`；
 2. 对照我仓库现有的真实日志格式，在 `scripts/stage3_log/` 下实现轻量预处理漏斗 `log_funnel.py`（检查异常时间段日志是否已被环形缓冲区冲掉、切出 `[T_start - 10min, T_end]` 窗口日志小文件、统计相比 Ref 暴增的 Top 10 Tag/PID）；
-3. 更新 `.claude/skills/power-review/SKILL.md`、`references/general_guide.md` 和 `assets/templates/iteration_patch_card.md`，将查日志与沉淀流程串成：“漏斗预检止损与切片 -> 子代理基于查证地图与暴增 Tag 在小文件内自由探索 + Ref 反证 -> 客观查证地图自动对比更正 + 新故障案例存为 candidate 待人工确认”。
+3. 更新 `.claude/skills/power-review/SKILL.md`、`references/general_guide.md` 和 `assets/templates/iteration_patch_card.md`（同步清理旧 `case_knowledge_base.md` 引用），将查日志与沉淀流程串成：“漏斗预检止损与切片 -> 子代理基于查证地图与暴增 Tag 在小文件内自由探索（若缺起点可拿精准锁名/PID 回原日志目录往前追溯）+ Ref 反证 -> 客观查证地图自动对比更正 + 新故障案例存为 candidate 待人工确认”。
 ```
