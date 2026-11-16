@@ -1,0 +1,755 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>功耗审单结论 - TICKET-20261116-042</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --page-bg: #f9f9f7;
+      --surface: #fcfcfb;
+      --surface-subtle: #f3f2ee;
+      --code-bg: #f4f3ef;
+      --text-primary: #0b0b0b;
+      --text-secondary: #52514e;
+      --text-muted: #898781;
+      --border: rgba(11, 11, 11, 0.10);
+      --border-strong: rgba(11, 11, 11, 0.18);
+
+      /* Status palette (always paired with icon + text label) */
+      --status-critical: #d03b3b;
+      --status-critical-bg: rgba(208, 59, 59, 0.08);
+      --status-warning: #b87d00;
+      --status-warning-dot: #fab219;
+      --status-warning-bg: rgba(250, 178, 25, 0.12);
+      --status-good: #006300;
+      --status-good-dot: #0ca30c;
+      --status-good-bg: rgba(12, 163, 12, 0.09);
+      --accent-blue: #2a78d6;
+      --accent-blue-bg: rgba(42, 120, 214, 0.08);
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root:where(:not([data-theme="light"])) {
+        color-scheme: dark;
+        --page-bg: #0d0d0d;
+        --surface: #1a1a19;
+        --surface-subtle: #232321;
+        --code-bg: #141413;
+        --text-primary: #f0efec;
+        --text-secondary: #c3c2b7;
+        --text-muted: #898781;
+        --border: rgba(255, 255, 255, 0.10);
+        --border-strong: rgba(255, 255, 255, 0.20);
+
+        --status-critical: #e66767;
+        --status-critical-bg: rgba(208, 59, 59, 0.16);
+        --status-warning: #fab219;
+        --status-warning-dot: #fab219;
+        --status-warning-bg: rgba(250, 178, 25, 0.14);
+        --status-good: #0ca30c;
+        --status-good-dot: #0ca30c;
+        --status-good-bg: rgba(12, 163, 12, 0.15);
+        --accent-blue: #3987e5;
+        --accent-blue-bg: rgba(57, 135, 229, 0.15);
+      }
+    }
+
+    :root[data-theme="dark"] {
+      color-scheme: dark;
+      --page-bg: #0d0d0d;
+      --surface: #1a1a19;
+      --surface-subtle: #232321;
+      --code-bg: #141413;
+      --text-primary: #f0efec;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --border: rgba(255, 255, 255, 0.10);
+      --border-strong: rgba(255, 255, 255, 0.20);
+
+      --status-critical: #e66767;
+      --status-critical-bg: rgba(208, 59, 59, 0.16);
+      --status-warning: #fab219;
+      --status-warning-dot: #fab219;
+      --status-warning-bg: rgba(250, 178, 25, 0.14);
+      --status-good: #0ca30c;
+      --status-good-dot: #0ca30c;
+      --status-good-bg: rgba(12, 163, 12, 0.15);
+      --accent-blue: #3987e5;
+      --accent-blue-bg: rgba(57, 135, 229, 0.15);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      padding: 24px 16px 56px;
+      background: var(--page-bg);
+      color: var(--text-primary);
+      font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      font-size: 14px;
+      line-height: 1.6;
+    }
+
+    .container {
+      max-width: 920px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Top meta bar */
+    .topbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--text-secondary);
+      font-size: 13px;
+    }
+
+    .meta-items {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .meta-sep {
+      color: var(--text-muted);
+    }
+
+    .btn {
+      appearance: none;
+      border: 1px solid var(--border-strong);
+      background: var(--surface);
+      color: var(--text-primary);
+      border-radius: 6px;
+      padding: 5px 11px;
+      font-size: 12.5px;
+      font-family: inherit;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      transition: background 0.15s ease;
+    }
+
+    .btn:hover {
+      background: var(--surface-subtle);
+    }
+
+    .btn-primary {
+      background: var(--text-primary);
+      color: var(--surface);
+      border-color: var(--text-primary);
+      font-weight: 600;
+    }
+
+    .btn-primary:hover {
+      opacity: 0.88;
+      background: var(--text-primary);
+    }
+
+    /* Card base */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 20px 22px;
+    }
+
+    .verdict-card {
+      border-left: 4px solid var(--status-critical);
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+
+    .badge-critical {
+      background: var(--status-critical-bg);
+      color: var(--status-critical);
+    }
+
+    .badge-good {
+      background: var(--status-good-bg);
+      color: var(--status-good);
+    }
+
+    .badge-warning {
+      background: var(--status-warning-bg);
+      color: var(--status-warning);
+    }
+
+    .badge-blue {
+      background: var(--accent-blue-bg);
+      color: var(--accent-blue);
+    }
+
+    .dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .verdict-title {
+      margin: 0 0 8px;
+      font-size: 21px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+
+    .verdict-summary {
+      margin: 0;
+      font-size: 15px;
+      color: var(--text-primary);
+    }
+
+    .key-metrics {
+      margin-top: 14px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(175px, 1fr));
+      gap: 12px;
+    }
+
+    .metric-item .label {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .metric-item .val {
+      font-size: 18px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    .metric-item .sub {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+
+    /* Copyable comment box */
+    .section-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 10px;
+    }
+
+    .section-title {
+      margin: 0;
+      font-size: 15px;
+      font-weight: 600;
+    }
+
+    pre.copy-box {
+      margin: 0;
+      padding: 13px 15px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12.5px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+      color: var(--text-primary);
+    }
+
+    /* Other slices brief list */
+    .slice-notes {
+      margin: 0;
+      padding: 0;
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .slice-notes li {
+      padding: 9px 12px;
+      border-radius: 7px;
+      background: var(--surface-subtle);
+      font-size: 13.5px;
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+    }
+
+    .tag-inline {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      padding: 1px 5px;
+      border-radius: 4px;
+      background: var(--code-bg);
+      border: 1px solid var(--border);
+    }
+
+    /* New knowledge section */
+    .knowledge-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 720px) {
+      .knowledge-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .k-box {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 15px;
+      background: var(--surface-subtle);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .k-box h4 {
+      margin: 0 0 6px;
+      font-size: 13.5px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .k-list {
+      margin: 0;
+      padding-left: 16px;
+      font-size: 13px;
+      color: var(--text-secondary);
+    }
+
+    .k-list li {
+      margin-bottom: 4px;
+    }
+
+    .k-list strong {
+      color: var(--text-primary);
+    }
+
+    .k-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* Collapsible raw evidence */
+    details.raw-panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    details.raw-panel > summary {
+      padding: 14px 20px;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-secondary);
+      user-select: none;
+      list-style: none;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    details.raw-panel > summary::-webkit-details-marker {
+      display: none;
+    }
+
+    details.raw-panel > summary::after {
+      content: "展开查账 ▼";
+      font-size: 12px;
+      font-weight: 400;
+      color: var(--text-muted);
+    }
+
+    details.raw-panel[open] > summary {
+      border-bottom: 1px solid var(--border);
+      color: var(--text-primary);
+    }
+
+    details.raw-panel[open] > summary::after {
+      content: "收起 ▲";
+    }
+
+    .raw-body {
+      padding: 18px 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    .sub-heading {
+      margin: 0 0 8px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+    }
+
+    th, td {
+      padding: 8px 10px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+
+    th {
+      color: var(--text-secondary);
+      font-weight: 600;
+      background: var(--surface-subtle);
+    }
+
+    td.num, th.num {
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+    }
+
+    tr.highlight-row td {
+      font-weight: 600;
+      background: var(--status-critical-bg);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <!-- 顶部单据信息栏 -->
+    <header class="topbar">
+      <div class="meta-items">
+        <span><strong>单号：</strong>TICKET-20261116-042</span>
+        <span class="meta-sep">|</span>
+        <span><strong>机型容量：</strong>平板 10000 mAh</span>
+        <span class="meta-sep">|</span>
+        <span><strong>用户报障：</strong>“昨晚充满电拔掉放了一夜，早上起来掉了二十多格电”</span>
+      </div>
+      <button class="btn" id="themeToggle" type="button">切换深浅色</button>
+    </header>
+
+    <!-- 1. 第一屏核心拍板结论（1 秒看懂怎么处理） -->
+    <section class="card verdict-card">
+      <div class="badge-row">
+        <span class="badge badge-critical"><span class="dot" style="background:var(--status-critical)"></span>耗电异常</span>
+        <span class="badge badge-good"><span class="dot" style="background:var(--status-good-dot)"></span>根因已确认（数据 + 日志闭环）</span>
+        <span class="badge badge-blue">置信度：高</span>
+      </div>
+
+      <h1 class="verdict-title">审单决定：直接转交【图库与多媒体 AI 团队】处理</h1>
+      <p class="verdict-summary">
+        半夜灭屏待机期间（<span class="tag-inline">01:30 ~ 05:30</span> 与 <span class="tag-inline">06:10 ~ 07:00</span> 共 4.8 小时），<strong>图库（<span class="tag-inline">com.xxx.gallery</span>）</strong>因人脸聚类模型文件加载失败，每 3 秒报错重试一次并抓着系统休眠代理锁不放，导致整机无法深睡，白白掉电 <strong>13.1%</strong>。
+      </p>
+
+      <div class="key-metrics">
+        <div class="metric-item">
+          <div class="label">异常段真实放电均流</div>
+          <div class="val">68.4 mA</div>
+          <div class="sub">同库正常待机仅 8.2 mA（8.3倍）</div>
+        </div>
+        <div class="metric-item">
+          <div class="label">AP 物理深睡率</div>
+          <div class="val">6.8%</div>
+          <div class="sub">正常参照段为 94.1%</div>
+        </div>
+        <div class="metric-item">
+          <div class="label">头号未释放休眠锁</div>
+          <div class="val">91.4% 时长占用</div>
+          <div class="sub">PowerMgr_ProxyLock → uid 10045</div>
+        </div>
+        <div class="metric-item">
+          <div class="label">异常刷屏报错频次</div>
+          <div class="val">4,792 次</div>
+          <div class="sub">正常参照段为 0 次</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2. 一键复制转单评语（贴进提单系统直接结案） -->
+    <section class="card">
+      <div class="section-header">
+        <h2 class="section-title">可直接复制的转单评语</h2>
+        <button class="btn btn-primary" type="button" data-copy-target="transferComment">复制转单评语</button>
+      </div>
+      <pre class="copy-box" id="transferComment">【功耗审单结论】灭屏待机耗电异常，根因已确认，请转【图库与多媒体 AI 团队】排查处理。
+1. 耗电表现：01:30~05:30 及 06:10~07:00（合计 4.8h）灭屏真实均流达 68.4mA（同库正常待机 8.2mA），AP 深睡率仅 6.8%。
+2. 定位铁证：
+   - 数据侧：PowerMgr_ProxyLock 持锁占比 91.4%，对应 com.xxx.gallery (AI_ClusterWorker 线程) 灭屏持续占用 CPU 14.8%；
+   - 日志侧：00:12:08 图库(uid=10045)申请休眠锁 GalleryBatchAI(id=8821) 后，因人脸模型 face_cluster_v3.om 加载失败(err=-2)触发每 3 秒重试死循环（狂刷 4792 次，正常段 0 次），异常分支未释放锁。
+3. 关键原始日志：
+   11-16 00:12:08.412  1024  1180 I RunningLockMgr: Acquire ProxyLock id=8821, uid=10045, tag=GalleryBatchAI
+   11-16 01:30:04.105  4399  4812 E GalleryAISvc  : Load face_cluster_v3.om failed (err=-2), retry in 3000ms, keep lock=8821</pre>
+    </section>
+
+    <!-- 3. 同单其余时间段一句话交代（省得犯嘀咕） -->
+    <section class="card">
+      <div class="section-header" style="margin-bottom:8px;">
+        <h2 class="section-title">同单其余时间段核查交代（无需额外拆单）</h2>
+      </div>
+      <ul class="slice-notes">
+        <li>
+          <span class="badge badge-warning"><span class="dot" style="background:var(--status-warning-dot)"></span>次要疑似</span>
+          <span><strong>10:15 ~ 11:05（灭屏 0.8h，均流 36.5 mA）：</strong>AP 深睡正常（89.5%），仅手写笔霍尔中断偏高（48 次/h），疑似笔吸附松动复充；<strong>因该时段 hilog 已被环形缓冲区冲掉</strong>，建议图库主问题修复后观察。</span>
+        </li>
+        <li>
+          <span class="badge badge-good"><span class="dot" style="background:var(--status-good-dot)"></span>正常豁免</span>
+          <span><strong>22:50 ~ 00:15（亮屏 1.4h，均流 1180 mA）：</strong>前台主流 3D 游戏占 86.2%，无关后台仅 5.4%（&lt;15%），属正常重度使用消耗。</span>
+        </li>
+      </ul>
+    </section>
+
+    <!-- 4. 本次新沉淀的知识（直接展示本次往 SQLite 记了什么） -->
+    <section class="card">
+      <div class="section-header" style="margin-bottom:4px;">
+        <h2 class="section-title">本次新学到的排查知识（SQLite 双层知识库变更）</h2>
+        <span style="font-size:12px;color:var(--text-muted);">目标库：assets/memory/power_memory.db</span>
+      </div>
+
+      <div class="knowledge-grid">
+        <!-- 表1：客观查证地图 -->
+        <div class="k-box">
+          <div>
+            <h4>
+              <span>① 模块查证地图（表 1）</span>
+              <span class="badge badge-good">已自动写入生效</span>
+            </h4>
+            <ul class="k-list">
+              <li><strong>模块标识：</strong><span class="tag-inline">com.xxx.gallery</span></li>
+              <li><strong>新记下的日志 Tag：</strong><span class="tag-inline">GalleryAISvc</span>、锁标签 <span class="tag-inline">GalleryBatchAI</span></li>
+              <li><strong>新拉黑的无害噪音词：</strong><span class="tag-inline">Gallery Cloud Album sync idle</span>（经正常段比对每 10 分钟常驻打印，下次查单自动跳过）</li>
+            </ul>
+          </div>
+          <div class="k-actions">
+            <button class="btn" type="button" data-copy-text="python scripts/stage4_evolve/memory_store.py rollback-map --entity com.xxx.gallery">复制“撤销本次地图修改”命令</button>
+          </div>
+        </div>
+
+        <!-- 表2：新发现的故障死法候选 -->
+        <div class="k-box">
+          <div>
+            <h4>
+              <span>② 新故障死法候选（表 2 · ID #14）</span>
+              <span class="badge badge-warning">待人工确认转正</span>
+            </h4>
+            <ul class="k-list">
+              <li><strong>新增案例：</strong>人脸聚类模型 <span class="tag-inline">.om</span> 加载失败每 3s 重试未释放代理锁</li>
+              <li><strong>确诊日志特征：</strong><span class="tag-inline">Load .*\.om failed .* retry in .* keep lock</span></li>
+              <li><strong>对应归属团队：</strong>图库与多媒体 AI 团队（不会覆盖图库名下已有的其他案例）</li>
+            </ul>
+          </div>
+          <div class="k-actions">
+            <button class="btn btn-primary" type="button" data-copy-text="python scripts/stage4_evolve/memory_store.py confirm-case --case-id 14">复制“确认转正”命令</button>
+            <button class="btn" type="button" data-copy-text="python scripts/stage4_evolve/memory_store.py reject-case --case-id 14">复制“猜错了删掉”命令</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 5. 默认折叠的原始对账底稿（仅在研发质疑或你想查细节时点开） -->
+    <details class="raw-panel">
+      <summary>原始对账底稿：全库切片表 / .db 四列对比数据 / 子代理回溯原日志</summary>
+      <div class="raw-body">
+
+        <div>
+          <h3 class="sub-heading">1. 全库有效放电切片一览（00:15~01:30 充电及回落期已自动过滤）</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>切片</th>
+                  <th>时间窗 (时长)</th>
+                  <th>状态</th>
+                  <th class="num">真实均流</th>
+                  <th class="num">AP 深睡率</th>
+                  <th>审单归类</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Slice #1</td>
+                  <td>21:30 ~ 22:50 (1.3h)</td>
+                  <td>灭屏</td>
+                  <td class="num">8.2 mA</td>
+                  <td class="num">94.1%</td>
+                  <td>选作同库正常参照段 (Ref)</td>
+                </tr>
+                <tr>
+                  <td>Slice #2</td>
+                  <td>22:50 ~ 00:15 (1.4h)</td>
+                  <td>亮屏</td>
+                  <td class="num">1180.0 mA</td>
+                  <td class="num">-</td>
+                  <td>正常游戏豁免（无关后台 5.4%）</td>
+                </tr>
+                <tr class="highlight-row">
+                  <td>Slice #3</td>
+                  <td>01:30 ~ 05:30 (4.0h)</td>
+                  <td>灭屏</td>
+                  <td class="num">68.4 mA</td>
+                  <td class="num">6.8%</td>
+                  <td>异常簇 A 主代表段（根因已确认）</td>
+                </tr>
+                <tr class="highlight-row">
+                  <td>Slice #4</td>
+                  <td>06:10 ~ 07:00 (0.8h)</td>
+                  <td>灭屏</td>
+                  <td class="num">64.1 mA</td>
+                  <td class="num">9.2%</td>
+                  <td>异常簇 A 同因段（已合并至 #3）</td>
+                </tr>
+                <tr>
+                  <td>Slice #5</td>
+                  <td>10:15 ~ 11:05 (0.8h)</td>
+                  <td>灭屏</td>
+                  <td class="num">36.5 mA</td>
+                  <td class="num">89.5%</td>
+                  <td>次要疑似外设异常（时段日志已冲掉）</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="sub-heading">2. 异常簇 A 核心 .db 四列对比表（纯物理真值 + 模拟自身纵向倍数）</h3>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>维度与对象</th>
+                  <th class="num">① 异常段实测 (Target)</th>
+                  <th class="num">② 正常段参考 (Ref)</th>
+                  <th class="num">③ 对比变化 / 自身倍数</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr class="highlight-row">
+                  <td>[物理持锁] PowerMgr_ProxyLock</td>
+                  <td class="num">91.4% (13162s)</td>
+                  <td class="num">1.2% (56s)</td>
+                  <td class="num">+90.2% (暴增)</td>
+                </tr>
+                <tr>
+                  <td>[物理持锁] PushService_Wake</td>
+                  <td class="num">3.1% (446s)</td>
+                  <td class="num">2.8% (131s)</td>
+                  <td class="num">+0.3% (平稳)</td>
+                </tr>
+                <tr class="highlight-row">
+                  <td>[物理CPU线程] com.xxx.gallery / AI_ClusterWorker</td>
+                  <td class="num">14.8% (2131s)</td>
+                  <td class="num">0.0% (0s)</td>
+                  <td class="num">+14.8% (跨表共振)</td>
+                </tr>
+                <tr>
+                  <td>[模拟强度] com.xxx.systemui (模型系数偏大常驻项)</td>
+                  <td class="num">12.5 mA (38%)</td>
+                  <td class="num">12.0 mA (76%)</td>
+                  <td class="num">+0.5 mA (1.04x 平稳排除)</td>
+                </tr>
+                <tr class="highlight-row">
+                  <td>[模拟强度] com.xxx.gallery</td>
+                  <td class="num">11.4 mA (35%)</td>
+                  <td class="num">0.8 mA (5%)</td>
+                  <td class="num">+10.6 mA (14.25x 暴增)</td>
+                </tr>
+                <tr>
+                  <td>[缺失字段示例] modem_driver_stats</td>
+                  <td class="num">无数据</td>
+                  <td class="num">无数据</td>
+                  <td class="num">无数据</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <h3 class="sub-heading">3. 子代理跨时段回溯与异常窗关键原始日志（00:12 充电期申请锁 → 01:30~05:30 死循环重试）</h3>
+          <pre class="copy-box">11-16 00:12:08.412  1024  1180 I RunningLockMgr: Acquire ProxyLock id=8821, uid=10045, tag=GalleryBatchAI
+11-16 01:30:04.105  4399  4812 E GalleryAISvc  : Load face_cluster_v3.om failed (err=-2), retry in 3000ms, keep lock=8821
+11-16 03:45:19.882  4399  4812 E GalleryAISvc  : Load face_cluster_v3.om failed (err=-2), retry in 3000ms, keep lock=8821
+11-16 05:29:58.210  4399  4812 E GalleryAISvc  : Load face_cluster_v3.om failed (err=-2), retry in 3000ms, keep lock=8821</pre>
+        </div>
+
+      </div>
+    </details>
+
+  </div>
+
+  <script>
+    // 深浅色切换
+    document.getElementById("themeToggle").addEventListener("click", function () {
+      const root = document.documentElement;
+      const isDark = root.getAttribute("data-theme") === "dark" ||
+        (!root.getAttribute("data-theme") && window.matchMedia("(prefers-color-scheme: dark)").matches);
+      root.setAttribute("data-theme", isDark ? "light" : "dark");
+    });
+
+    // 通用一键复制
+    function copyTextWithFeedback(btn, text) {
+      const original = btn.textContent;
+      navigator.clipboard.writeText(text).then(function () {
+        btn.textContent = "✓ 已复制";
+        setTimeout(function () {
+          btn.textContent = original;
+        }, 1600);
+      });
+    }
+
+    document.querySelectorAll("[data-copy-target]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        const el = document.getElementById(btn.getAttribute("data-copy-target"));
+        if (el) copyTextWithFeedback(btn, el.textContent);
+      });
+    });
+
+    document.querySelectorAll("[data-copy-text]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        copyTextWithFeedback(btn, btn.getAttribute("data-copy-text"));
+      });
+    });
+  </script>
+</body>
+</html>
