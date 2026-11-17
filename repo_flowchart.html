@@ -1,0 +1,1123 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>d:\Assistant（power-review）仓库全貌与详细流程图</title>
+  <style>
+    :root {
+      --bg: #f8fafc;
+      --card: #ffffff;
+      --card-muted: #f1f5f9;
+      --border: #e2e8f0;
+      --fg: #0f172a;
+      --muted: #475569;
+      --placeholder: #94a3b8;
+      --primary: #2563eb;
+      --primary-fg: #ffffff;
+      --success: #16a34a;
+      --warning: #d97706;
+      --chart-1: #2563eb;
+      --chart-2: #0891b2;
+      --chart-3: #dc2626;
+      --chart-4: #7c3aed;
+      --chart-5: #0d9488;
+    }
+
+    html.dark {
+      --bg: #0b1120;
+      --card: #111827;
+      --card-muted: #1e293b;
+      --border: #334155;
+      --fg: #f1f5f9;
+      --muted: #cbd5e1;
+      --placeholder: #64748b;
+      --primary: #3b82f6;
+      --primary-fg: #ffffff;
+      --success: #22c55e;
+      --warning: #f59e0b;
+      --chart-1: #60a5fa;
+      --chart-2: #22d3ee;
+      --chart-3: #f87171;
+      --chart-4: #a78bfa;
+      --chart-5: #2dd4bf;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      padding: 20px;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.55;
+    }
+
+    .container {
+      max-width: 1260px;
+      margin: 0 auto;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px 24px;
+      box-shadow: 0 4px 20px rgba(15, 23, 42, 0.06);
+    }
+
+    .header {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding-bottom: 14px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .title-group h1 {
+      margin: 0;
+      font-size: 19px;
+      font-weight: 700;
+    }
+
+    .title-group p {
+      margin: 3px 0 0;
+      font-size: 13px;
+      color: var(--muted);
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .tabs {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+
+    .tab-btn {
+      padding: 7px 13px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: transparent;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .tab-btn:hover {
+      border-color: var(--primary);
+      color: var(--fg);
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+      border-color: var(--primary);
+      color: var(--primary-fg);
+    }
+
+    .btn-secondary {
+      padding: 6px 11px;
+      border-radius: 7px;
+      border: 1px solid var(--border);
+      background: var(--card-muted);
+      color: var(--fg);
+      font-size: 12.5px;
+      cursor: pointer;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 18px;
+      padding: 12px 0 8px;
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+
+    .svg-wrap {
+      width: 100%;
+      overflow-x: auto;
+      padding: 6px 0;
+      border-radius: 10px;
+      background: color-mix(in srgb, var(--card-muted) 45%, transparent);
+      border: 1px solid var(--border);
+    }
+
+    svg {
+      width: 100%;
+      min-width: 960px;
+      height: auto;
+      display: block;
+      user-select: none;
+    }
+
+    .node { cursor: pointer; }
+    .node:hover rect.node-box,
+    .node:hover polygon.node-box {
+      filter: brightness(0.97);
+    }
+    html.dark .node:hover rect.node-box,
+    html.dark .node:hover polygon.node-box {
+      filter: brightness(1.1);
+    }
+    .node.active rect.node-box,
+    .node.active polygon.node-box {
+      stroke-width: 2.6;
+    }
+
+    /* Structured Selected Node Inspector */
+    .inspector {
+      margin-top: 14px;
+      padding: 16px 18px;
+      border-radius: 10px;
+      background: var(--card-muted);
+      border: 1px solid var(--border);
+    }
+
+    .inspector-top {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .inspector-title-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .inspector-title {
+      font-size: 15.5px;
+      font-weight: 700;
+    }
+
+    .badge {
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 5px;
+    }
+
+    .path-text {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 12px;
+      color: var(--muted);
+      word-break: break-all;
+    }
+
+    .inspector-grid {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 12px;
+    }
+
+    .info-cell {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+    }
+
+    .info-cell h4 {
+      margin: 0 0 5px;
+      font-size: 12px;
+      font-weight: 700;
+      color: var(--muted);
+    }
+
+    .info-cell p, .info-cell ul {
+      margin: 0;
+      font-size: 13px;
+      color: var(--fg);
+    }
+
+    .info-cell ul {
+      padding-left: 16px;
+    }
+
+    .info-cell li {
+      margin-bottom: 3px;
+    }
+
+    /* Full Breakdown Section Below Diagram */
+    .section-header {
+      margin-top: 22px;
+      padding-top: 16px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .section-header h2 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
+    }
+
+    .section-header p {
+      margin: 2px 0 0;
+      font-size: 12.5px;
+      color: var(--muted);
+    }
+
+    .cards-list {
+      margin-top: 12px;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+      gap: 12px;
+    }
+
+    .part-card {
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 12px 14px;
+      background: var(--card);
+      cursor: pointer;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .part-card:hover {
+      border-color: var(--primary);
+    }
+
+    .part-card.active {
+      border-color: var(--primary);
+      box-shadow: 0 0 0 2px color-mix(in srgb, var(--primary) 18%, transparent);
+    }
+
+    .part-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+
+    .part-card-title {
+      font-size: 14px;
+      font-weight: 700;
+    }
+
+    .part-card-body {
+      font-size: 12.8px;
+      color: var(--muted);
+    }
+
+    .part-card-body strong {
+      color: var(--fg);
+    }
+
+    .part-card-body ul {
+      margin: 6px 0 0;
+      padding-left: 16px;
+    }
+
+    .part-card-body li {
+      margin-bottom: 3px;
+    }
+
+    .part-card-path {
+      margin-top: 8px;
+      padding-top: 6px;
+      border-top: 1px dashed var(--border);
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 11.5px;
+      color: var(--placeholder);
+      word-break: break-all;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="title-group">
+        <h1>d:\Assistant（power-review）仓库全貌与分步详解</h1>
+        <p>鸿蒙平板 DUBAI / XPower 功耗审单 Skill：审单流程、目录文件职责、待合入升级方案一图看清</p>
+      </div>
+      <div class="controls">
+        <div class="tabs" role="tablist">
+          <button id="tab-flow" class="tab-btn" onclick="switchView('flow')">1. 核心审单流程图</button>
+          <button id="tab-arch" class="tab-btn" onclick="switchView('arch')">2. 仓库文件全景</button>
+          <button id="tab-upgrade" class="tab-btn" onclick="switchView('upgrade')">3. 待合入升级链路</button>
+        </div>
+        <button class="btn-secondary" onclick="toggleTheme()">切换深浅色</button>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span class="legend-item"><span class="dot" style="background: var(--success);"></span>规则 / 模板已写明（可直接按此执行）</span>
+      <span class="legend-item"><span class="dot" style="background: var(--warning);"></span>脚手架蓝图（目前只有 README，待回内网补 .py 代码）</span>
+      <span class="legend-item"><span class="dot" style="background: var(--chart-4);"></span>升级方案待合入（已写完设计/源码，待整合进正式 Skill）</span>
+    </div>
+
+    <div class="svg-wrap">
+      <svg id="diagram" viewBox="0 0 1160 440" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="var(--muted)" />
+          </marker>
+          <marker id="arrow-success" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="var(--success)" />
+          </marker>
+          <marker id="arrow-up" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="var(--chart-4)" />
+          </marker>
+          <marker id="arrow-loop" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+            <path d="M 0 1.5 L 8.5 5 L 0 8.5 z" fill="var(--chart-5)" />
+          </marker>
+        </defs>
+        <g id="svg-stage"></g>
+      </svg>
+    </div>
+
+    <!-- Rich Inspector for Currently Selected Node -->
+    <div class="inspector">
+      <div class="inspector-top">
+        <div class="inspector-title-row">
+          <span id="ins-title" class="inspector-title"></span>
+          <span id="ins-badge" class="badge"></span>
+        </div>
+        <span id="ins-path" class="path-text"></span>
+      </div>
+      <div class="inspector-grid">
+        <div class="info-cell">
+          <h4>大白话：这一步 / 这部分干什么</h4>
+          <p id="ins-what"></p>
+        </div>
+        <div class="info-cell">
+          <h4>输入与输出（从哪来 → 到哪去）</h4>
+          <p id="ins-io"></p>
+        </div>
+        <div class="info-cell">
+          <h4>关键规则 / 核心数字 / 内部清单</h4>
+          <ul id="ins-rules"></ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- All Parts Breakdown List -->
+    <div class="section-header">
+      <div>
+        <h2 id="list-heading">当前视角各部分逐项详解（一屏通读）</h2>
+        <p>点击任意卡片可同步定位并高亮上方流程图中的对应节点</p>
+      </div>
+    </div>
+    <div id="cards-list" class="cards-list"></div>
+  </div>
+
+  <script>
+    const NODES = {
+      // ================== VIEW 1: CORE FLOW ==================
+      input: {
+        view: 'flow',
+        title: "0. 输入契约（$ARGUMENTS）",
+        badge: "已定稿",
+        color: "var(--chart-1)",
+        path: ".claude/skills/power-review/SKILL.md（第 17~21 行）",
+        what: "审单动作的唯一入口。每次只需要给单台出问题设备的数据库，不再依赖外部大盘基线；有日志就顺带查根因，没日志也能先凭数据库给出可疑对象和缺什么证据。",
+        io: "外部输入：单机功耗 .db（必选）+ 设备运行日志目录 log_dir（可选）+ 工单背景/用户抱怨时间窗 context_ext（可选）。输出给：阶段一数据库切片器与阶段三日志检索。",
+        rules: [
+          "必选：单机功耗 SQLite 数据库（.db）",
+          "可选：hilog / kernel_log 等设备运行日志目录",
+          "可选：问题单号、报障时间窗、距 OTA 升级天数等背景说明",
+          "待适配清单①：回内网需确认实际单子是单文件 .db 还是需先解压"
+        ]
+      },
+      s1_probe: {
+        view: 'flow',
+        title: "1A. 探表自适应 & 电池切片选段（SQL_0_Battery）",
+        badge: "蓝图待写 .py",
+        color: "var(--warning)",
+        path: "scripts/stage1_db/{probe,slicer} + assets/config/thresholds.json",
+        what: "先扫描 .db 里到底有哪些表和字段（不同机型表结构可能缺字段，缺了就跳过或降级，不准报错中断）；然后过滤充电期间与拔充回落干扰，把整库切成干净的纯灭屏段和纯亮屏段，挑出所有超标异常段（Target_List）和同类型最省电的正常参照段（Ref）。",
+        io: "输入：原始 .db + thresholds.json 阈值。输出：Target_1, Target_2, ... 异常切片清单 + 公共正常参照段 Ref（全库都在漏电时 Ref = 无）。",
+        rules: [
+          "探表：用 sqlite_master 和 PRAGMA table_info 先探后查；发现未预设的活跃新表按能量/时长/频次 3 类模板自动纳管",
+          "切段过滤：剔除充电中（charge=1）和拔充后 300s 电压回落期",
+          "最短切片：纯灭屏 >= 1800s（30 分钟），纯亮屏 >= 600s（10 分钟）",
+          "异常红线：灭屏均流 >20mA 或掉电 >0.3%/h 或深睡 <80%；亮屏掉电 >12%/h 或均流 >1000mA 或后台 >25%"
+        ]
+      },
+      s1_calc: {
+        view: 'flow',
+        title: "1B. 分枝取证（灭屏 7 槽 / 亮屏 8 槽）& 真模换算",
+        badge: "蓝图待写 .py",
+        color: "var(--warning)",
+        path: "scripts/stage1_db/{slots,calculator} + plan.md",
+        what: "根据切片是灭屏还是亮屏，按固定槽位抽指标，并严防“算错数”：硬件真实值（电流、深睡率、持锁时长、中断频次、线程 CPU%）和软件模拟电量（器件/应用能量 Share %）绝不混为一谈。",
+        io: "输入：Target 切片和 Ref 切片的起止时间戳。输出：每段各维度的标准化 SlotResult 指标数据。",
+        rules: [
+          "灭屏 7 槽 (SQL_OFF_1~7)：L1 AP/子系统休眠+覆盖率 | L2 持锁+唤醒IRQ/Alarm+器件/后台Share% | L3 偷跑线程/网络扫描+外设(笔/键盘/霍尔/OTG)+异常事件栈",
+          "亮屏 8 槽 (SQL_ON_1~8)：L1 器件Share%+覆盖率 | L2 亮度/LTPO/GPU-DSS+前台/分屏+后台陪跑 | L3 CPU线程核频点+GPU/DDR/ROM+网/音视频/外设+温升热降频",
+          "防算错铁律：累加器必须段末减段初（MAX-MIN，禁 SUM）；覆盖率统一换算 mAs（1mAh=3600mAs, 1uAh=3.6mAs）且防父子行重复累加；仅靠电量 % 反推均流要标 [估算值]",
+          "双榜合并去噪：实测大户榜（>=3% 或 >=3次/h，不足保底前5）∪ 突增榜（Target-Ref 降序 Top 3），其余合入 Others"
+        ]
+      },
+      s2_ev: {
+        view: 'flow',
+        title: "2. 组装 4 列表证据包 & 双维度案例召回",
+        badge: "模板就绪+蓝图",
+        color: "var(--chart-2)",
+        path: "scripts/stage2_evidence/ + assets/templates/evidence_pack_block.md + references/case_knowledge_base.md",
+        what: "把阶段一算好的所有数据，拼成大模型最容易对比阅读的统一 4 列表格（嫌疑对象 | ①Target实测 | ②Ref参考 | ③Diff变化）；同时去案例库翻出最相关的历史经验卡片，省得大模型每次从零瞎摸。",
+        io: "输入：各 Target 的 SlotResult + 历史案例库。输出：完整 Markdown 证据包 + 召回参考卡片，交给大模型做研判。",
+        rules: [
+          "缺失值规范：未采集、缺表或缺字段必须填「无数据」（不计算差值），严禁填 0",
+          "双维召回：维度 A 按嫌犯包名/模块名/锁名精确匹配；维度 B 按同类异常槽位（如同样都是持锁超时）抽 2~3 张旧卡片供“照猫画虎”",
+          "当前案例库状态：case_knowledge_base.md 目前含 2 个示范模板（SyncWake 持锁、手写笔无线复充震荡），待导入区暂空"
+        ]
+      },
+      s3_branch: {
+        view: 'flow',
+        title: "3A. 按分支加载活文档 & 正常使用豁免筛查",
+        badge: "活文档已写明",
+        color: "var(--success)",
+        path: "references/{general_guide.md, screen_off_rules.md, screen_on_rules.md}",
+        what: "为了不浪费上下文，灭屏段只加载灭屏规则，亮屏段只加载亮屏规则。进入破案前先查“豁免白名单”——用户本来就在听歌、下载、打游戏或分屏办公时耗电高是正常的，但必须确认没有“无关后台趁机偷跑”才能放行。",
+        io: "输入：阶段二证据包 + 对应分支规则文档。输出：决定该切片是“直接豁免关闭”，还是“进入下一步抓真凶”。",
+        rules: [
+          "灭屏豁免 3 类：熄屏听歌/语音（Audio>25%+音频App居首）、大流量真下载（吞吐高如>100MB/h，若只持锁不跑流量<5MB/h 严禁豁免）、手写笔单次正常快充（<45min 充停）",
+          "亮屏豁免 4 类：高帧游戏、视频会议/网课、户外超高亮度（>80%）、真分屏多窗并发（须有时间重叠/窗口标记或前台总时长>1.2×Δt，防先后切换误判）",
+          "豁免硬前提：必须同时确认无无关后台高耗电（<15%）、无异常长持锁/高频唤醒，全部通过才可整段豁免"
+        ]
+      },
+      s3_exempt: {
+        view: 'flow',
+        title: "分支结果：判定为正常使用豁免",
+        badge: "正常闭合",
+        color: "var(--success)",
+        path: "references/general_guide.md（第二章）",
+        what: "确认用户处于合理重度场景，且底层没有任何无关异常陪跑。该切片不再浪费工具去查日志，直接记为正常使用场景，在报告末尾附一行说明即可。",
+        io: "输入：通过白名单与无陪跑复核的切片。输出：进入阶段四写入正常豁免汇总。",
+        rules: [
+          "若同一份 .db 里既有正常段又有异常段（复合异常），只豁免正常段，严禁一刀切全单豁免"
+        ]
+      },
+      s3_suspect: {
+        view: 'flow',
+        title: "3B. 覆盖率筛查 & 4 列表锁定头号嫌犯",
+        badge: "核心推理规则",
+        color: "var(--chart-3)",
+        path: "SKILL.md + references/general_guide.md（第三章）",
+        what: "按固定 4 步读表找嫌犯：先核查软件算出来的电跟电池实际掉的电对不对得上（防外设漏电/软件盲区），再根据有没有正常 Ref 段，灵活决定看第③列突增还是第①列霸榜 + 多表同名共振。",
+        io: "输入：未豁免的异常段 4 列表证据。输出：嫌疑人名单（模块/包名/锁名/IRQ/外设）与精确异常时间窗。",
+        rules: [
+          "第 1 步覆盖率：灭屏模拟覆盖率 <35% 先自查是否漏器件表、时间未对齐或单位没转 mAs；排除算漏后标「未解释耗电」→ 排查手写笔/键盘/OTG/硬件底电流",
+          "第 2 步读表法：Ref 正常低耗时盯第 ③ 列 Diff 突增 + 第 ① 列；Ref 也高或为「无」时忽略第 ③ 列，直接盯第 ① 列断层霸榜",
+          "第 3 步跨表共振：同一名字在 ≥2 张表里靠前（如线程CPU高+持锁久+唤醒多）直接锁死",
+          "第 4 步亮屏分责：先看后台总占比是否 >25%，是则先抓后台第 1，否则查前台场景与 LTPO 高刷/DSS 退化/热降频"
+        ]
+      },
+      s3_log: {
+        view: 'flow',
+        title: "3C. 日志自主破案 & 结案三问自检",
+        badge: "蓝图待写 .py",
+        color: "var(--warning)",
+        path: "scripts/stage3_log/{readers,tools} + general_guide.md（第四、五章）",
+        what: "如果用户给了日志，就调用 4 个日志工具顺藤摸瓜找代码层面的真凶；如果没给日志（或关键日志被冲掉），绝不瞎编，只基于 .db 数据给出“疑似对象”。定案前必须通过“三问自检”，答不上来立刻推翻重查。",
+        io: "输入：头号嫌犯 + 时间窗 + 可选 log_dir。输出：实锤根因 + 2~4 行关键脱敏日志证据（或无日志时的疑似说明）。",
+        rules: [
+          "4 个规划日志工具：diff（Target vs Ref 模板暴增 ≥5倍 Top 15）、pid-trace（包名转全量 PID）、search（时间窗+正则检索）、context（前后 35 行流式放大）",
+          "5 类通用死法：①有借无还（锁/资源只申请不释放） ②报错死循环重试 ③状态机乒乓震荡（睡醒横跳） ④跨进程 IPC/Binder 干等阻塞 ⑤灭屏/切后台状态拦截失效",
+          "结案必做三问自检：①日志异常是否贯穿高耗电段？ ②物理行为能否解释头号耗电硬件？ ③正常 Ref 段是否确实没有同类高频刷屏？"
+        ]
+      },
+      s4_report: {
+        view: 'flow',
+        title: "4A. 输出唯一总结论 & 同因合并报告",
+        badge: "模板已就绪",
+        color: "var(--success)",
+        path: "assets/templates/{report_conclusion.md, report_segment_detail.md} + report_demo.html",
+        what: "按固定中文模板输出最终审单报告。最重要的一条是把“耗电异常与否”和“原因是不是已经实锤”拆开写，没日志证据时老老实实写「疑似对象」并列出还缺什么抓包动作，同原因的好几段异常自动合并成一段写。",
+        io: "输入：全部切片研判结果。输出：顶部 3 行总结论 + 各同因合并段明细 + 豁免切片附注。",
+        rules: [
+          "顶部总结论固定拆分：「耗电判断」（异常/正常/需硬件排查/证据不足）+「归因状态」（根因已确认 / 疑似对象 / 尚未定位）+ 指向对象与建议转交团队（含高中低置信度）",
+          "分段正文必含：耗电基本情况 → .db 关键软硬件与纯物理铁证 → 日志根因（2~4 行原文 + 大白话解释 + 研发建议或缺表 hiperf 提示）",
+          "报告交互效果样式可直接打开仓库根目录 report_demo.html 查看"
+        ]
+      },
+      s4_evolve: {
+        view: 'flow',
+        title: "4B. 知识沉淀 & 人工复盘纠偏闭环",
+        badge: "模板+蓝图",
+        color: "var(--chart-5)",
+        path: "assets/templates/iteration_patch_card.md + scripts/stage4_evolve/ + references/",
+        what: "每审完一单或人工复盘指出 AI 判断哪里偏了，就把新案例或新边界整理成补丁卡；人工拍板确认后写入 references/ 活文档，下一单审单立刻按新规则跑，越用越准。",
+        io: "输入：新发现故障模式或人工纠偏意见。输出：iteration_patch_card 建议 → 人工确认后写入 references/*.md。",
+        rules: [
+          "两条迭代路径：① 审单遇新问题自动附带补丁卡片，人工确认后入库；② 日常口头复盘纠偏（误判边界/平台特性），直接修订通用或分支规则",
+          "写入安全检查（stage4_evolve 蓝图）：校验 ①②③ 字段完整性，防重复写入或破坏原文档结构"
+        ]
+      },
+
+      // ================== VIEW 2: REPO ARCHITECTURE ==================
+      root_docs: {
+        view: 'arch',
+        title: "根目录：整体蓝图、升级方案与辅助文件",
+        badge: "5 个核心文件 + 本图",
+        color: "var(--chart-4)",
+        path: "d:\\Assistant\\{plan.md, upgrade_patch.md, log_subagent_memory_upgrade.md, verify_guide.md, report_demo.html}",
+        what: "存放项目的初版全局设计、两份重大实战升级文档、回内网后的三步验货手册以及报告效果展示页。注意：这里的设计升级尚未全部合入 .claude/skills/power-review/ 正式目录。",
+        io: "定位：外网方案设计沉淀与演进文档区；其中 upgrade_patch.md 和 log_subagent_memory_upgrade.md 是回内网后指导改代码与改规则的施工图。",
+        rules: [
+          "plan.md：初版架构方案（含 16 个 SQL 槽位规范，但有 4 处旧口径已被 Skill 目录替代）",
+          "upgrade_patch.md：解决“软件建模失真”的 4 项硬改造 + 5 大实战盲点修补 + 4 处冲突对齐表",
+          "log_subagent_memory_upgrade.md：阶段二~四升级（薄漏斗 + 日志子代理 + SQLite 双层库），内含唯一完整 Python 源码 memory_store.py（第 156~726 行）",
+          "verify_guide.md：30 分钟三步验货指南与 4 类症状排错（⚠️ 84/86 行链接的 zcode_model_guide.md 当前在本仓缺失）",
+          "report_demo.html：独立可打开的审单报告页面 Demo（含转单评语复制与折叠对账底稿）"
+        ]
+      },
+      skill_entry: {
+        view: 'arch',
+        title: "SKILL.md：正式 Skill 总入口与施工清单",
+        badge: "最新正式口径",
+        color: "var(--success)",
+        path: ".claude/skills/power-review/SKILL.md",
+        what: "Claude 触发 power-review Skill 时首先读取的总说明书。规定了输入参数、3 条不可违背的铁律、4 个阶段的路由顺序，以及回内网对照真实数据时必须逐项完成打勾删除的 6 条适配清单。",
+        io: "读取：被模型或执行框架作为第一入口加载。下游调度：按需引导读取 references/、assets/ 和调用 scripts/。",
+        rules: [
+          "三大铁律：真/模严格分层禁混毫安值 | 异常段全覆盖+统一 4 列表 | 表结构自适应（多退少补）",
+          "与 plan.md 冲突时：以 SKILL.md 所在目录的最新口径为准（分屏须重叠、缺失填无数据、豁免查陪跑、结论拆双字段）",
+          "真实环境待适配清单 ①~⑥：核对输入与真值→对照真表写 SQL→校准阈值→导入历史案例→适配日志格式→补齐 scripts/ 与 tests/"
+        ]
+      },
+      dir_assets: {
+        view: 'arch',
+        title: "assets/：唯一阈值配置源 & 4 套输出模板",
+        badge: "JSON + 4 模板已就绪",
+        color: "var(--success)",
+        path: ".claude/skills/power-review/assets/{config/thresholds.json, templates/*}",
+        what: "把所有可能会变的数字红线抽离成 1 个 JSON 文件，把所有输出格式固定成 4 个 Markdown 模板，确保脚本和模型“照同一把尺子量、按同一个模子写”。",
+        io: "被 stage1_db / stage2_evidence / stage3_log 脚本读取参数，并约束阶段二和阶段四的 Markdown 输出格式。",
+        rules: [
+          "config/thresholds.json：定义切片（300s/1800s/600s）、灭屏红线（20mA/0.3%/80%）、亮屏红线（12%/1000mA/25%/15%/1.2x）、覆盖率（35%）、双榜合并、日志工具（5倍/15条/35行）",
+          "templates/evidence_pack_block.md：阶段二 4 列表证据包输出模版",
+          "templates/report_conclusion.md：报告顶部 3 行总结论（耗电判断 + 归因状态 + 团队置信度）",
+          "templates/report_segment_detail.md：单个或同因合并异常段详细正文模版",
+          "templates/iteration_patch_card.md：阶段四新案例卡片与规则补丁建议模版"
+        ]
+      },
+      dir_refs: {
+        view: 'arch',
+        title: "references/：按需加载的 4 份审单活文档",
+        badge: "4 份规范已就绪",
+        color: "var(--success)",
+        path: ".claude/skills/power-review/references/{general_guide.md, screen_off_rules.md, screen_on_rules.md, case_knowledge_base.md}",
+        what: "把专家审单大脑拆成“通用总则 + 灭屏专属 + 亮屏专属 + 历史案例库”四本手册。模型审灭屏单不看亮屏手册，既省上下文又减少误判。",
+        io: "在阶段二/三被大模型按需加载；在阶段四经人工确认后可动态追加或修订，越跑越聪明。",
+        rules: [
+          "general_guide.md：真/模 5 原则、豁免白名单、4 列表看表 4 步、5 类查日志死法、三问自检与结论合并",
+          "screen_off_rules.md：灭屏待机 7 维（L1~L3）精细查表动作与异常信号",
+          "screen_on_rules.md：亮屏活跃 8 维（L1~L3）精细查表动作（含 LTPO 高刷、多窗分屏、后台陪跑）",
+          "case_knowledge_base.md：一题一卡案例库（目前仅 2 个示范模板；若实施 SQLite 升级方案则将被 power_memory.db 替代）"
+        ]
+      },
+      dir_scripts: {
+        view: 'arch',
+        title: "scripts/：五模块纯标准库脚本脚手架",
+        badge: "仅 README 蓝图，待写 .py",
+        color: "var(--warning)",
+        path: ".claude/skills/power-review/scripts/{core, stage1_db, stage2_evidence, stage3_log, stage4_evolve}",
+        what: "规划用纯 Python 标准库（sqlite3 / json / re / pathlib，零第三方依赖）把确定性的算账、切段、拼表、读大日志和写库操作做成稳定脚本。当前外网仓内没有真实 .db 与日志样本，所以只落了各目录架构说明 README.md。",
+        io: "上游接收真实 .db 和 log_dir，下游向大模型输出干净证据包或向 references/ 安全回写。",
+        rules: [
+          "core/：公共数据模型（TimeSlice / MetricRow / SlotResult）、配置加载器、只读 SQLite 客户端",
+          "stage1_db/：probe（探表/降级/未知新表扫描）、slicer（电池切片选 Target/Ref）、calculator（真模换算/双榜合并）、slots（灭屏7槽/亮屏8槽/custom 3类模板）",
+          "stage2_evidence/：4 列表格式化器 + 证据包总装 + recall/（精确+同类槽位双维召回）",
+          "stage3_log/：readers/（流式读/正则归一化/时钟对齐）+ tools/（diff / pid-trace / search / context 4 个 CLI）",
+          "stage4_evolve/：新卡片校验与防破坏安全回写工具"
+        ]
+      },
+      dir_tests: {
+        view: 'arch',
+        title: "tests/：四关验收标准手册与测试占位",
+        badge: "手册就绪，样本待补",
+        color: "var(--warning)",
+        path: ".claude/skills/power-review/tests/{standard_test_guide.md, fixtures/, unit/, integration/}",
+        what: "明确规定怎么验收这套 Skill 到底准不准、会不会算错数或乱下结论，共设 4 道关卡；但因为目前外网还没真实脱敏样本，fixtures / unit / integration 目录下仅有占位 README.md。",
+        io: "指导回内网代码写完后的逐级验证与回归防退化。",
+        rules: [
+          "第 1 关（.db 与 4 列表对账）：核对切片、均流、[估算值]、mAs 换算、MAX-MIN、双榜合并、无数据填法、同类召回共 8 项",
+          "第 2 关（日志 4 工具单测）：核对缺年份/跨零点/单调时钟对齐、pid-trace 建程被冲兜底、diff(Ref=无不报错)、百 MB 流式不卡",
+          "第 3 关（6 类单端到端盲测）：真 Bug / 正常+复合异常 / 切换vs真分屏 / 无日志只标疑似 / 缺表hiperf提示 / 覆盖率<35%",
+          "第 4 关（固化回归）：6 类脱敏微缩样本入 fixtures/，每次改规则或脚本前必重跑"
+        ]
+      },
+
+      // ================== VIEW 3: UPGRADE PATH ==================
+      up_s1: {
+        view: 'upgrade',
+        title: "升级 1：阶段一抗建模失真 + 两大漏检/量化修补",
+        badge: "upgrade_patch.md 改造 1~3 & 修补 5/7",
+        color: "var(--chart-4)",
+        path: "scripts/stage1_db/ + SKILL.md + general_guide.md + thresholds.json",
+        what: "解决真机实战最痛的“软件建模不准（某些模块系数偏高虚胖，某些偏低算漏，导致总模拟电量比电池真掉电还大）”问题，顺便修补碎片亮屏整晚漏检和大电池整数百分比误差。",
+        io: "改法：不动端侧底层功耗模型，纯从阶段一算法和阶段二表格展示层面消除歪系数影响。",
+        rules: [
+          "改造 1（纵向倍数消歪系数）：所有模拟表单项换算 I_sim_item (mA)，第③列增加 Target/Ref 纵向倍数（同一模块乘同一歪系数 k，一除就约掉！）；突增榜改按 +mA 且 >=2.0x 排序",
+          "改造 2（剥夺模拟电量独立定罪权）：模拟表排第 1 但纯物理指标正常且纵向 <1.3x，一律判“模型系数偏高虚胖”；定罪只认深睡/持锁/线程/频次等纯物理铁证，并在 general_guide.md 新增“已知建模偏置备忘录”",
+          "改造 3（替代死板的 <35%）：有 Ref 时算「增量解释率 ΔI_sim / ΔI_real < 30%」抓多掉却没模拟出的电；无 Ref 时用「物理静默矛盾法」（电池掉电超标但深睡正常+无长持锁+CPU极低→外设/硬件漏电）",
+          "修补 5（防整晚漏检）：过滤掉纯灭/亮屏后，若剩余未充电区间 >=60min、灭屏占比 >=85% 且短亮屏切换 >=4次/h，合并为「灭屏-频繁亮灭屏震荡异常段」查 hall_irq / 笔吸附",
+          "修补 7（大电池 10000mAh 量化保护）：严格按 ΔmAh → AVG(real_current) → Δlevel% 三级算真值；仅靠 level% 且 Δlevel<=1%、时长<2h 的切片禁选为 Ref，灭屏短段只掉 1% 不单凭估算均流判异常"
+        ]
+      },
+      up_s2: {
+        view: 'upgrade',
+        title: "升级 2：阶段二异常段预聚类 + SQLite 双层模糊召回",
+        badge: "修补 6 + memory_store.py recall",
+        color: "var(--chart-4)",
+        path: "scripts/stage2_evidence/ + log_subagent_memory_upgrade.md（memory_store.py）",
+        what: "解决两大卡脖子问题：① 一份几天抓的 .db 切出十几个异常段时，不再全塞进大模型撑爆上下文；② 用 SQLite 词根分词模糊召回替代死板名字匹配，不再因为 .db 模块名和日志 Tag 写法不一样而“失忆”。",
+        io: "输入：阶段一全部异常切片。输出：聚类后的代表证据包 + 双表召回的查证地图与历史死法清单 + 全库轻量目录。",
+        rules: [
+          "修补 6（同因预聚类）：同一分支异常切片 >3 段时，脚本按 Top1 持锁/IRQ/CPU线程或静默指纹自动聚类，只对每簇最严重的 Primary Target 出完整 4 列表并深查日志，其余同簇切片最多 1 次快速核验",
+          "SQLite 双层召回（memory_store.py recall）：拆分嫌犯名词根模糊查询 表1《module_lookup_map》+ 表2《module_fault_cases》",
+          "轻量目录兜底：随召回附带全库已存模块一句话目录，防止缩写完全不同漏召回，主模型可点名补调",
+          "修补 8（防亮屏高刷误报）：同步修正 screen_on_rules.md——对比 Ref 不能直接定罪高刷，必须看 Target 本身是低帧视频/静态阅读（异常）还是高频滑动/手写笔（正常）"
+        ]
+      },
+      up_funnel: {
+        view: 'upgrade',
+        title: "升级 3A：log_funnel.py 轻量薄漏斗（1 秒止损 + 切片）",
+        badge: "代替复杂检索限制",
+        color: "var(--chart-4)",
+        path: "scripts/stage3_log/log_funnel.py + 修补 9（正则归一化）",
+        what: "不再写死板工具限制大模型，也不让子代理直接在几百 MB 原日志里大海捞针。先跑这个薄漏斗：日志如果早被环形缓冲区冲掉了，1 秒内直接止损退出；日志还在，就只切出异常小窗口并算出比 Ref 暴增的 Top 10 靶子。",
+        io: "输入：原始大日志目录 + [T_start, T_end] + [Ref_start, Ref_end]。输出：covered 布尔状态 + tmp_target_slice.log 小文件 + Top 10 暴增 Tag(PID) 榜。",
+        rules: [
+          "第 1 步覆盖率止损：计算 [Log_min, Log_max] 与异常窗交集时长，若 <5% 直接返回 covered=false，不启动子代理，直接按 .db 物理真值给疑似结论",
+          "第 2 步切小窗口：切出 [T_start - 10min, T_end] 写入 tmp_target_slice.log（往前多留 10 分钟抓灭屏前刚申请未释放的锁）",
+          "第 3 步归一化防漏出（修补 9 + Top10）：先用正则把 0x十六进制→<HEX>、UUID→<UUID>、动态数字/耗时→<NUM>，再对比 Ref 速率输出净增/倍数 Top 10 Tag(PID) 及脱敏代表行"
+        ]
+      },
+      up_subagent: {
+        view: 'upgrade',
+        title: "升级 3B：独立日志调查子代理（三步只读自主破案）",
+        badge: "不撑爆主对话窗口",
+        color: "var(--chart-4)",
+        path: "log_subagent_memory_upgrade.md（第三章第 2 节）",
+        what: "只在漏斗确认 covered=true 时才启动独立子代理，让它专心在几 MB 小切片文件里用 Grep/Read 自由排查，只把干净结论和写库建议回传给主模型，保护主对话上下文干净。",
+        io: "输入：tmp_target_slice.log + .db 摘要与 Ref 时段 + Top10 榜单 + 双表召回结果。输出：实锤日志结论 + map_update / case_proposal 提案。",
+        rules: [
+          "第 1 步按地图核查：自动跳过 noise_keywords 已知无害刷屏；若属系统代理锁，搜 trace_keywords 揪上游真实 UID/PID；核对 module_fault_cases（confirmed 直接锁，candidate 须严查上下文）",
+          "第 2 步小切片探索 + 精准回溯起点：主战场在 tmp_target_slice.log 顺着 Top10 与跨进程 IPC 查；若锁/任务在几小时前就已申请，拿着已锁定的精确锁 ID / PID / 专属 Tag 回原大日志往前追起点（严禁一开始在原目录搜宽泛词）",
+          "第 3 步 Ref 反证（只读不写库）：凡新抓到的异常关键字，若 Ref 有日志覆盖必须去 Ref 搜一次频次，确认正常段没在狂打才定案（若正常段也在狂打，立刻推翻并顺手加入待写 noise_keywords）"
+        ]
+      },
+      up_db: {
+        view: 'upgrade',
+        title: "升级 4：power_memory.db 双层安全写库 + 快照导出",
+        badge: "彻底废除双轨制",
+        color: "var(--chart-4)",
+        path: "assets/memory/power_memory.db + memory_store.py（已含完整源码）",
+        what: "把“模块怎么查（固有属性）”和“这次犯了什么错（具体故障死法）”拆成两张表管理。查法对了错了一起原地纠正且留快照可回滚；新发现的故障死法绝不覆盖同模块老案例，先隔离成 candidate 等人工确认再转正，彻底废除旧版 case_knowledge_base.md。",
+        io: "输入：主模型三问自检通过后的 map_update 与 case_proposal。输出：更新 power_memory.db + 自动刷新只读快照 references/log_memory_snapshot.md。",
+        rules: [
+          "表 1 module_lookup_map（1 对 1）：存 aliases_and_tags、log_source_hint、trace_keywords、noise_keywords，支持自动对比更正并把旧值备份到 表 3 memory_revision_log（支持一键回滚）",
+          "表 2 module_fault_cases（1 对多）：同一模块可并存多种不同死法（hit_count 计数）；AI 新发现一律写入 status='candidate' 隔离，人工确认后转 'confirmed'，防止大模型两次猜错自我洗白",
+          "自动导出快照：每次写库自动刷新 references/log_memory_snapshot.md，方便肉眼审阅与 git diff；上线后删掉旧 case_knowledge_base.md 避免两头打架"
+        ]
+      }
+    };
+
+    function esc(s) {
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function measureBadgeWidth(text) {
+      let w = 14;
+      for (const ch of text) {
+        w += /[\u4e00-\u9fff]/.test(ch) ? 11.5 : 6.8;
+      }
+      return Math.ceil(w);
+    }
+
+    function box(id, x, y, w, h, title, sub, accent, badgeText) {
+      const bw = badgeText ? measureBadgeWidth(badgeText) : 0;
+      return `
+        <g class="node" data-id="${id}" onclick="selectNode('${id}')">
+          <rect class="node-box" x="${x}" y="${y}" width="${w}" height="${h}" rx="9"
+            fill="color-mix(in srgb, ${accent} 10%, var(--card))"
+            stroke="${accent}" stroke-width="1.5" />
+          <rect x="${x}" y="${y}" width="6" height="${h}" rx="3" fill="${accent}" />
+          ${badgeText ? `
+            <rect x="${x + w - bw - 8}" y="${y + 7}" width="${bw}" height="18" rx="4"
+              fill="color-mix(in srgb, ${accent} 18%, transparent)" />
+            <text x="${x + w - 8 - bw / 2}" y="${y + 19.5}" text-anchor="middle" font-size="10.5" font-weight="700" fill="${accent}">${esc(badgeText)}</text>
+          ` : ''}
+          <text x="${x + 15}" y="${y + 23}" font-size="13.5" font-weight="700" fill="var(--fg)">${esc(title)}</text>
+          ${sub.map((line, idx) => `
+            <text x="${x + 15}" y="${y + 44 + idx * 17}" font-size="11.5" fill="var(--muted)">${esc(line)}</text>
+          `).join('')}
+        </g>
+      `;
+    }
+
+    function diamond(id, cx, cy, hw, hh, title, sub, accent) {
+      const pts = `${cx},${cy - hh} ${cx + hw},${cy} ${cx},${cy + hh} ${cx - hw},${cy}`;
+      return `
+        <g class="node" data-id="${id}" onclick="selectNode('${id}')">
+          <polygon class="node-box" points="${pts}"
+            fill="color-mix(in srgb, ${accent} 12%, var(--card))"
+            stroke="${accent}" stroke-width="1.6" />
+          <text x="${cx}" y="${cy - 4}" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--fg)">${esc(title)}</text>
+          <text x="${cx}" y="${cy + 15}" text-anchor="middle" font-size="11" fill="var(--muted)">${esc(sub)}</text>
+        </g>
+      `;
+    }
+
+    function arrow(d, label, lx, ly, color = "var(--muted)", marker = "arrow", dashed = false) {
+      return `
+        <g>
+          <path d="${d}" fill="none" stroke="${color}" stroke-width="1.7" ${dashed ? 'stroke-dasharray="5 3"' : ''} marker-end="url(#${marker})" />
+          ${label ? `<text x="${lx}" y="${ly}" font-size="11" font-weight="700" fill="${color}" text-anchor="middle">${esc(label)}</text>` : ''}
+        </g>
+      `;
+    }
+
+    function renderFlow() {
+      return `
+        <!-- Stage Lane Containers -->
+        <rect x="10" y="10" width="150" height="420" rx="10" fill="color-mix(in srgb, var(--chart-1) 4%, transparent)" stroke="var(--border)" stroke-dasharray="4 3" />
+        <text x="85" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="var(--muted)">输入契约</text>
+
+        <rect x="172" y="10" width="236" height="420" rx="10" fill="color-mix(in srgb, var(--warning) 4%, transparent)" stroke="var(--border)" stroke-dasharray="4 3" />
+        <text x="290" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="var(--muted)">阶段一：.db 探表切片与指标计算</text>
+
+        <rect x="420" y="10" width="218" height="420" rx="10" fill="color-mix(in srgb, var(--chart-2) 4%, transparent)" stroke="var(--border)" stroke-dasharray="4 3" />
+        <text x="529" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="var(--muted)">阶段二：证据组装与双维召回</text>
+
+        <rect x="650" y="10" width="272" height="420" rx="10" fill="color-mix(in srgb, var(--chart-3) 4%, transparent)" stroke="var(--border)" stroke-dasharray="4 3" />
+        <text x="786" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="var(--muted)">阶段三：豁免筛查、锁嫌犯与日志破案</text>
+
+        <rect x="934" y="10" width="216" height="420" rx="10" fill="color-mix(in srgb, var(--success) 4%, transparent)" stroke="var(--border)" stroke-dasharray="4 3" />
+        <text x="1042" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="var(--muted)">阶段四：结论报告与知识迭代</text>
+
+        <!-- Connectors -->
+        ${arrow("M 150 110 L 180 110", "", 0, 0)}
+        ${arrow("M 290 186 L 290 218", "", 0, 0)}
+        ${arrow("M 398 302 L 410 302 L 410 118 L 428 118", "", 0, 0)}
+        ${arrow("M 529 194 L 529 224", "", 0, 0)}
+        ${arrow("M 628 294 L 642 294 L 642 94 L 664 94", "", 0, 0)}
+        ${arrow("M 800 94 L 826 94", "豁免", 812, 85, "var(--success)", "arrow-success")}
+        ${arrow("M 914 94 L 942 94", "", 0, 0, "var(--success)", "arrow-success")}
+        ${arrow("M 730 144 L 730 170", "未豁免", 756, 161)}
+        ${arrow("M 786 276 L 786 302", "", 0, 0)}
+        ${arrow("M 912 356 L 924 356 L 924 140 L 942 140", "通过三问", 900, 238)}
+        ${arrow("M 1042 204 L 1042 246", "", 0, 0)}
+        ${arrow("M 944 316 L 930 316 L 930 416 L 529 416 L 529 368", "回写活文档，下一单生效", 726, 410, "var(--chart-5)", "arrow-loop", true)}
+
+        <!-- Nodes -->
+        ${box("input", 18, 48, 134, 134, "0. 输入契约", [
+          "• 单机 .db（必选）",
+          "• log_dir（可选）",
+          "• context_ext",
+          "  单号/时间窗/OTA"
+        ], "var(--chart-1)")}
+
+        ${box("s1_probe", 182, 48, 216, 138, "1A. 探表与切片", [
+          "• sqlite_master 探表降级",
+          "• 剔充电与拔充 300s 回落",
+          "• 灭屏>=1800s / 亮屏>=600s",
+          "• 圈 Target_List + 最低 Ref"
+        ], "var(--warning)", "蓝图")}
+
+        ${box("s1_calc", 182, 220, 216, 148, "1B. 分枝取证计算", [
+          "• 灭屏 7 槽 / 亮屏 8 槽",
+          "• 硬件真值 vs 模拟 Share%",
+          "• 累加器用 MAX-MIN 禁 SUM",
+          "• 换算 mAs 校验覆盖率",
+          "• 大户 ∪ 突增Top3 + Others"
+        ], "var(--warning)", "蓝图")}
+
+        ${box("s2_ev", 430, 48, 198, 146, "2. 4列表 + 双维召回", [
+          "• 实体 | Target | Ref | Diff",
+          "• 缺表/未采填「无数据」",
+          "• 精确名字 + 同类槽位召回",
+          "• 供未知模块“照猫画虎”"
+        ], "var(--chart-2)")}
+
+        ${box("s3_branch", 430, 226, 198, 140, "3A. 按分支加载规则", [
+          "• general_guide.md 通用",
+          "• 灭屏只读灭屏规则",
+          "• 亮屏只读亮屏规则",
+          "• 准备查豁免白名单"
+        ], "var(--success)", "规则")}
+
+        ${diamond("s3_exempt", 730, 94, 70, 48, "正常豁免?", "白名单+无陪跑<15%", "var(--success)")}
+
+        ${box("s3_exempt", 826, 52, 88, 84, "正常闭合", [
+          "• 听歌/下载",
+          "• 游戏/分屏"
+        ], "var(--success)")}
+
+        ${box("s3_suspect", 660, 172, 252, 104, "3B. 覆盖率 & 锁嫌犯", [
+          "• 灭屏<35%先查漏算，再疑外设漏电",
+          "• Ref 正常看 Diff；否则看第①列霸榜",
+          "• 跨表同名共振直接锁定"
+        ], "var(--chart-3)")}
+
+        ${box("s3_log", 660, 304, 252, 102, "3C. 日志破案 & 三问自检", [
+          "• diff / pid-trace / search / context",
+          "• 核老案例或查 5 类通用死法",
+          "• 时间贯穿 + 硬件吻合 + Ref 反证"
+        ], "var(--warning)", "蓝图")}
+
+        ${box("s4_report", 944, 52, 196, 152, "4A. 输出双字段报告", [
+          "• 耗电判断 vs 归因状态拆分",
+          "• 缺日志标「疑似对象」禁硬猜",
+          "• 同因异常段自动合并正文",
+          "• 附转交团队 + 置信度"
+        ], "var(--success)", "模板")}
+
+        ${box("s4_evolve", 944, 248, 196, 134, "4B. 知识沉淀闭环", [
+          "• 新问题生成补丁卡片",
+          "• 人工口头复盘纠偏",
+          "• 确认后回写 references/"
+        ], "var(--chart-5)")}
+      `;
+    }
+
+    function renderArch() {
+      return `
+        <rect x="10" y="10" width="330" height="420" rx="10" fill="color-mix(in srgb, var(--chart-4) 5%, transparent)" stroke="var(--border)" stroke-dasharray="4 3" />
+        <text x="175" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="var(--muted)">根目录：设计方案、整改补丁与演示文件</text>
+
+        <rect x="358" y="10" width="792" height="420" rx="10" fill="color-mix(in srgb, var(--primary) 4%, transparent)" stroke="var(--border)" stroke-dasharray="4 3" />
+        <text x="754" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="var(--muted)">.claude/skills/power-review/（核心 Skill 正式目录）</text>
+
+        ${arrow("M 326 168 L 372 168", "升级待合入", 349, 158, "var(--chart-4)", "arrow-up", true)}
+        ${arrow("M 612 130 L 656 86", "", 0, 0)}
+        ${arrow("M 612 155 L 656 172", "", 0, 0)}
+        ${arrow("M 612 185 L 656 270", "", 0, 0)}
+        ${arrow("M 612 215 L 656 365", "", 0, 0)}
+
+        ${box("root_docs", 24, 48, 302, 364, "根目录 5 个核心文件", [
+          "1. plan.md",
+          "   初版架构与 16 槽位 SQL 全集",
+          "   （4 处旧口径已被 Skill 目录替代）",
+          "2. upgrade_patch.md",
+          "   抗建模失真 4 项改造 + 5 盲点修补",
+          "3. log_subagent_memory_upgrade.md",
+          "   薄漏斗 + 子代理 + SQLite 双层库",
+          "   （内含 memory_store.py 完整源码）",
+          "4. verify_guide.md（3步验货指南）",
+          "   ⚠️ 引用了本仓不存在的 zcode_model_guide",
+          "5. report_demo.html（交互式报告展示）"
+        ], "var(--chart-4)", "含待合入")}
+
+        ${box("skill_entry", 374, 96, 238, 174, "SKILL.md（正式总入口）", [
+          "• 输入契约（.db / log_dir / context）",
+          "• 三大铁律（真模分层/4列表/自适应）",
+          "• 四阶段工作流按需加载路由",
+          "• 最新正式口径单一事实源",
+          "• 回内网真实环境待适配清单 ①~⑥"
+        ], "var(--success)", "已对齐")}
+
+        ${box("dir_assets", 658, 44, 476, 78, "assets/（配置与输出模板）", [
+          "• config/thresholds.json：切片、灭/亮屏红线、双榜、日志参数单一配置源",
+          "• templates/：evidence_pack_block / report_conclusion / detail / iteration_patch"
+        ], "var(--success)", "已就绪")}
+
+        ${box("dir_refs", 658, 134, 476, 86, "references/（按需加载的 4 份活文档）", [
+          "• general_guide.md：真模 5 原则、豁免白名单、看表 4 步、5 类死法、三问自检",
+          "• screen_off_rules.md（灭屏7维） | screen_on_rules.md（亮屏8维）",
+          "• case_knowledge_base.md（含 2 个示范卡片；升级后由 SQLite 替代）"
+        ], "var(--success)", "已就绪")}
+
+        ${box("dir_scripts", 658, 232, 476, 98, "scripts/（五模块纯标准库脚手架）", [
+          "• core/（数据模型、配置加载、只读 SQLite 封装）",
+          "• stage1_db/（probe / slicer / calculator / slots） | stage2_evidence/（组装+recall）",
+          "• stage3_log/（readers / 4个CLI tools） | stage4_evolve/（校验回写）",
+          "• 当前全为 README.md 设计说明，暂无 .py 可执行代码"
+        ], "var(--warning)", "待补代码")}
+
+        ${box("dir_tests", 658, 342, 476, 76, "tests/（四关验收标准与占位目录）", [
+          "• standard_test_guide.md：1.对账(8项) → 2.工具单测 → 3.六类单盲测 → 4.固化回归",
+          "• fixtures/ | unit/ | integration/ 目前仅有 README 占位，待内网补脱敏样本"
+        ], "var(--warning)", "待补样本")}
+      `;
+    }
+
+    function renderUpgrade() {
+      return `
+        <rect x="10" y="10" width="1140" height="420" rx="10" fill="color-mix(in srgb, var(--chart-4) 4%, transparent)" stroke="var(--border)" stroke-dasharray="4 3" />
+        <text x="580" y="30" text-anchor="middle" font-size="12" font-weight="700" fill="var(--muted)">待合入升级方案：彻底解决「建模失真」、「盲搜爆窗口」、「同模块案例相互覆盖」三大实战痛点</text>
+
+        ${arrow("M 264 148 L 294 148", "", 0, 0, "var(--chart-4)", "arrow-up")}
+        ${arrow("M 538 148 L 568 148", "", 0, 0, "var(--chart-4)", "arrow-up")}
+        ${arrow("M 806 148 L 836 148", "", 0, 0, "var(--chart-4)", "arrow-up")}
+        ${arrow("M 986 244 L 986 278", "", 0, 0, "var(--chart-4)", "arrow-up")}
+        ${arrow("M 836 346 L 416 346 L 416 258", "下一单召回", 620, 338, "var(--chart-4)", "arrow-up", true)}
+
+        ${box("up_s1", 24, 48, 240, 210, "1. 阶段一：抗建模失真与防漏检", [
+          "• 算单项 I_sim + 纵向倍数 Target/Ref",
+          "  同一歪系数 k 分子分母直接约分消掉",
+          "• 剥夺模拟电量独立定罪权",
+          "  只认纯物理指标 + 建偏置备忘录",
+          "• 废除 <35%，改用增量解释率 <30%",
+          "  + 无 Ref 时物理静默矛盾法抓漏电",
+          "• 合并碎亮屏震荡段（防整晚漏检）",
+          "• 大电池 level% 三级真值防假 0"
+        ], "var(--chart-4)", "upgrade_patch")}
+
+        ${box("up_s2", 296, 48, 242, 206, "2. 阶段二：预聚类 + 双层召回", [
+          "• >3 异常段按物理嫌犯指纹预聚类",
+          "  每簇只深查 1 个 Primary Target",
+          "• memory_store.py recall：",
+          "  词根分词模糊匹配防缩写漏查",
+          "• 同时召回表1查证地图 + 表2案例",
+          "• 附全库模块一句话目录兜底",
+          "• 亮屏防 Ref 跨场景高刷误报"
+        ], "var(--chart-4)", "补丁6+SQLite")}
+
+        ${box("up_funnel", 570, 48, 236, 206, "3A. 薄漏斗 log_funnel.py", [
+          "• 1 秒校验日志覆盖率：",
+          "  交集 <5% 直接止损不启子代理！",
+          "• 覆盖达标则切出小切片文件：",
+          "  [T_start - 10min, T_end]",
+          "• 先抹 <HEX>/<UUID>/<NUM> 噪音",
+          "• 输出比 Ref 暴增的 Top 10 Tag",
+          "  及最高频脱敏代表行"
+        ], "var(--chart-4)", "1秒止损")}
+
+        ${box("up_subagent", 838, 48, 296, 194, "3B. 日志调查子代理（三步只读）", [
+          "① 对照表1避开已知 noise_keywords 刷屏",
+          "   追 trace_keywords 跳板词查表2老案例",
+          "② 在小切片内围绕 Top10 自由排查",
+          "   若锁申请在几小时前，拿精准 ID 回原目录追",
+          "③ 去 Ref 正常段反证同频才可定案",
+          "   回传结论 + map_update / case_proposal"
+        ], "var(--chart-4)", "独立上下文")}
+
+        ${box("up_db", 838, 280, 296, 134, "4. power_memory.db 分层写库", [
+          "• 表1 module_lookup_map（1对1）：",
+          "  三问通过后自动对比更正 + 写回滚日志表3",
+          "• 表2 module_fault_cases（1对多）：",
+          "  AI 新死法一律写 candidate 隔离，人工转正",
+          "• 自动刷新 log_memory_snapshot.md 快照"
+        ], "var(--chart-4)", "废除双轨")}
+      `;
+    }
+
+    let currentView = 'flow';
+    let currentNode = 'input';
+
+    function switchView(view) {
+      currentView = view;
+      const stage = document.getElementById('svg-stage');
+      if (view === 'flow') {
+        stage.innerHTML = renderFlow();
+        currentNode = 'input';
+      } else if (view === 'arch') {
+        stage.innerHTML = renderArch();
+        currentNode = 'skill_entry';
+      } else {
+        stage.innerHTML = renderUpgrade();
+        currentNode = 'up_s1';
+      }
+
+      ['flow', 'arch', 'upgrade'].forEach(v => {
+        document.getElementById('tab-' + v).classList.toggle('active', v === view);
+      });
+
+      renderCardsList(view);
+      selectNode(currentNode);
+    }
+
+    function renderCardsList(view) {
+      const container = document.getElementById('cards-list');
+      const entries = Object.entries(NODES).filter(([, item]) => item.view === view);
+      const headings = {
+        flow: "审单主流程各阶段逐项详解（0 → 4B 一屏通读）",
+        arch: "仓库目录与核心文件逐项详解",
+        upgrade: "待合入升级方案各环节逐项详解"
+      };
+      document.getElementById('list-heading').textContent = headings[view];
+
+      container.innerHTML = entries.map(([id, item]) => `
+        <div class="part-card" data-card-id="${esc(id)}" onclick="selectNode('${esc(id)}', true)">
+          <div class="part-card-head">
+            <span class="part-card-title">${esc(item.title)}</span>
+            <span class="badge" style="background: color-mix(in srgb, ${item.color} 15%, transparent); color: ${item.color};">${esc(item.badge)}</span>
+          </div>
+          <div class="part-card-body">
+            <div><strong>说明：</strong>${esc(item.what)}</div>
+            <div style="margin-top:4px;"><strong>流转：</strong>${esc(item.io)}</div>
+            <ul>
+              ${item.rules.map(r => `<li>${esc(r)}</li>`).join('')}
+            </ul>
+          </div>
+          <div class="part-card-path">${esc(item.path)}</div>
+        </div>
+      `).join('');
+    }
+
+    function selectNode(id, scrollUp = false) {
+      currentNode = id;
+      document.querySelectorAll('.node').forEach(el => {
+        el.classList.toggle('active', el.dataset.id === id);
+      });
+      document.querySelectorAll('.part-card').forEach(el => {
+        el.classList.toggle('active', el.dataset.cardId === id);
+      });
+
+      const info = NODES[id];
+      if (!info) return;
+
+      document.getElementById('ins-title').textContent = info.title;
+      const badge = document.getElementById('ins-badge');
+      badge.textContent = info.badge;
+      badge.style.backgroundColor = `color-mix(in srgb, ${info.color} 16%, transparent)`;
+      badge.style.color = info.color;
+      document.getElementById('ins-path').textContent = info.path;
+      document.getElementById('ins-what').textContent = info.what;
+      document.getElementById('ins-io').textContent = info.io;
+      document.getElementById('ins-rules').innerHTML = info.rules.map(r => `<li>${esc(r)}</li>`).join('');
+
+      if (scrollUp) {
+        document.querySelector('.inspector').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+
+    function toggleTheme() {
+      document.documentElement.classList.toggle('dark');
+    }
+
+    switchView('flow');
+  </script>
+</body>
+</html>
